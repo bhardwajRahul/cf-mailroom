@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentic-inbox",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/cdn-cgi/handler/email"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "agentic-inbox",
+      "database_id": "c4bee2a2-df80-45f0-9df5-4a1d9804d0a0",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "send_email": [
+    {
+      // Sender domains must be onboarded to Email Service (dashboard > Email Service).
+      // "remote": true routes local-dev sends through the real service.
+      "name": "EMAIL",
+      "remote": true
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RAW",
+      // Create with: wrangler r2 bucket create agentic-inbox-raw
+      "bucket_name": "agentic-inbox-raw"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
