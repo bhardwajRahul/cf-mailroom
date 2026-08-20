@@ -15,6 +15,10 @@
       "migrations_dir": "migrations"
     }
   ],
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
   "send_email": [
     {
       // Sender domains must be onboarded to Email Service (dashboard > Email Service).

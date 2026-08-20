@@ -13,4 +13,5 @@ interface Env {
   DB: D1Database;
   RAW: R2Bucket;
   EMAIL: OutboundEmailBinding;
+  AI: Ai;
 }

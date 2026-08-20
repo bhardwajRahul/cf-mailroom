@@ -1,11 +1,12 @@
 import PostalMime, { type Email } from "postal-mime";
+import { generateDraft } from "../agent/draft";
 
 const MAILBOX_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
 
 export async function receiveEmail(
   message: ForwardableEmailMessage,
   env: Env,
-  _ctx: ExecutionContext,
+  ctx: ExecutionContext,
 ): Promise<void> {
   const rawBuffer = await new Response(message.raw).arrayBuffer();
   const parsed = await PostalMime.parse(rawBuffer);
@@ -26,11 +27,13 @@ export async function receiveEmail(
   const subject = parsed.subject ?? "";
   const textBody = parsed.text ?? htmlToText(parsed.html ?? "");
   const referencesIds = extractMessageIds(parsed);
-  const threadId = await resolveThread(env, mailbox.id, subject, referencesIds);
+  const existingThreadId = await resolveThread(env, mailbox.id, subject, referencesIds);
   const now = new Date().toISOString();
   const snippet = textBody.replace(/\s+/g, " ").trim().slice(0, 140);
+  let threadId: number;
 
-  if (threadId !== null) {
+  if (existingThreadId !== null) {
+    threadId = existingThreadId;
     await env.DB.batch([
       insertMessage(env, {
         threadId,
@@ -54,8 +57,9 @@ export async function receiveEmail(
     )
       .bind(mailbox.id, subject, normalizeSubject(subject), snippet, now)
       .first<{ id: number }>();
+    threadId = thread!.id;
     await insertMessage(env, {
-      threadId: thread!.id,
+      threadId,
       messageId,
       parsed,
       subject,
@@ -64,21 +68,34 @@ export async function receiveEmail(
       now,
     }).run();
   }
+
+  // Draft agent runs in the background after the email is stored. Guards:
+  // mailbox opt-in, automated senders (RFC 3834), and mail from one of our own
+  // addresses — all three protect against reply loops.
+  if (mailbox.agent_mode !== "off" && !isAutoSubmitted(parsed)) {
+    const fromOurAddress = await env.DB.prepare("SELECT id FROM mailboxes WHERE address = ?")
+      .bind((parsed.from?.address ?? "").toLowerCase())
+      .first();
+    if (!fromOurAddress) ctx.waitUntil(generateDraft(env, threadId));
+  }
 }
 
-async function findOrCreateMailbox(env: Env, address: string): Promise<{ id: number }> {
-  const existing = await env.DB.prepare("SELECT id FROM mailboxes WHERE address = ?")
+async function findOrCreateMailbox(
+  env: Env,
+  address: string,
+): Promise<{ id: number; agent_mode: string }> {
+  const existing = await env.DB.prepare("SELECT id, agent_mode FROM mailboxes WHERE address = ?")
     .bind(address)
-    .first<{ id: number }>();
+    .first<{ id: number; agent_mode: string }>();
   if (existing) return existing;
 
   // Catch-all friendly: any address that receives mail becomes a mailbox.
   const color = MAILBOX_COLORS[hashCode(address) % MAILBOX_COLORS.length];
   const created = await env.DB.prepare(
-    "INSERT INTO mailboxes (address, color) VALUES (?, ?) RETURNING id",
+    "INSERT INTO mailboxes (address, color) VALUES (?, ?) RETURNING id, agent_mode",
   )
     .bind(address, color)
-    .first<{ id: number }>();
+    .first<{ id: number; agent_mode: string }>();
   return created!;
 }
 

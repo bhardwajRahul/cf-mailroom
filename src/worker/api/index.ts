@@ -14,6 +14,36 @@ api.get("/mailboxes", async (c) => {
   return c.json(results);
 });
 
+api.patch("/mailboxes/:id", async (c) => {
+  const body = await c.req.json<{
+    display_name?: string;
+    agent_mode?: "off" | "draft" | "auto";
+    agent_instructions?: string;
+  }>();
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (body.display_name !== undefined) {
+    fields.push("display_name = ?");
+    values.push(body.display_name || null);
+  }
+  if (body.agent_mode !== undefined) {
+    if (!["off", "draft", "auto"].includes(body.agent_mode)) {
+      return c.json({ error: "invalid agent_mode" }, 400);
+    }
+    fields.push("agent_mode = ?");
+    values.push(body.agent_mode);
+  }
+  if (body.agent_instructions !== undefined) {
+    fields.push("agent_instructions = ?");
+    values.push(body.agent_instructions || null);
+  }
+  if (fields.length === 0) return c.json({ error: "no fields to update" }, 400);
+  await c.env.DB.prepare(`UPDATE mailboxes SET ${fields.join(", ")} WHERE id = ?`)
+    .bind(...values, c.req.param("id"))
+    .run();
+  return c.json({ ok: true });
+});
+
 api.get("/threads", async (c) => {
   const mailboxId = c.req.query("mailbox_id");
   const status = c.req.query("status") ?? "open";

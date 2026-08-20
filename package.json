@@ -15,10 +15,12 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
+    "ai": "^7.0.70",
     "hono": "^4.6.0",
     "postal-mime": "^2.3.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "workers-ai-provider": "^4.0.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.0.0",
