@@ -23,5 +23,21 @@
       "binding": "RAW",
       "bucket_name": "agentic-inbox-raw"
     }
-  ]
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "DRAFT_QUEUE",
+        "queue": "agentic-inbox-drafts-dev"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "agentic-inbox-drafts-dev",
+        "max_batch_size": 5,
+        "max_batch_timeout": 1,
+        "max_retries": 1
+      }
+    ]
+  }
 }

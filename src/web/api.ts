@@ -3,6 +3,7 @@ import type {
   Mailbox,
   Playbook,
   PlaybookInput,
+  ReplyAttemptResult,
   ThreadSummary,
   ThreadDetail,
 } from "../shared/types";
@@ -88,11 +89,14 @@ export const markRead = (id: number) => request(`/threads/${id}/read`, { method:
 
 export const archiveThread = (id: number) => request(`/threads/${id}/archive`, { method: "POST" });
 
-export const sendReply = (id: number, text: string, draftId?: number) =>
-  request(`/threads/${id}/reply`, {
+export const sendReply = (id: number, text: string, attemptId: string, draftId?: number) =>
+  request<ReplyAttemptResult>(`/threads/${id}/reply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, draft_id: draftId }),
+    body: JSON.stringify({ text, draft_id: draftId, attempt_id: attemptId }),
   });
 
 export const discardDraft = (id: number) => request(`/drafts/${id}/discard`, { method: "POST" });
+
+export const retryDraftRun = (id: number) =>
+  request<{ ok: true }>(`/draft-runs/${id}/retry`, { method: "POST" });

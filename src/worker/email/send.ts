@@ -14,6 +14,8 @@ export interface OutgoingEmail {
   references?: string[];
   /** Set for agent-sent mail so recipients' auto-responders stay quiet (RFC 3834) */
   autoSubmitted?: boolean;
+  /** Durable Reply Attempt id for tracing an ambiguous send in provider logs. */
+  attemptId?: string;
 }
 
 export interface SendResult {
@@ -29,6 +31,7 @@ export async function sendEmail(env: Env, mail: OutgoingEmail): Promise<SendResu
   if (mail.inReplyTo) headers["In-Reply-To"] = mail.inReplyTo;
   if (mail.references?.length) headers["References"] = mail.references.join(" ");
   if (mail.autoSubmitted) headers["Auto-Submitted"] = "auto-replied";
+  if (mail.attemptId) headers["X-Agentic-Inbox-Attempt"] = mail.attemptId;
 
   const result = await env.EMAIL.send({
     from: mail.from.name

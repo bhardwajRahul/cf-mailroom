@@ -28,6 +28,18 @@ _Avoid_: Template, canned response, rule
 A proposed reply authored by the agent and held for human review before sending.
 _Avoid_: Auto-reply, suggestion
 
+**Draft Run**:
+One retryable attempt to produce an Agent Draft for a specific latest inbound Message. A Conversation may have many Draft Runs over time, but only the newest relevant result may become pending.
+_Avoid_: Agent job, generation task
+
+**Reply Attempt**:
+A durable human-approved intent to send one reply. Retrying the same Reply Attempt must never create another outbound Message.
+_Avoid_: Send request, outbox item
+
+**Attachment**:
+A file or inline resource carried by one Message and available to people for inspection or download.
+_Avoid_: Upload, raw MIME
+
 **Conversation**:
 The ordered email exchange grouped under one customer request.
 _Avoid_: Ticket, chat

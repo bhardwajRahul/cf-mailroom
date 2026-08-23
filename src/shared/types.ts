@@ -48,8 +48,19 @@ export interface ThreadSummary {
   is_read: number;
   message_count: number;
   pending_draft_count: number;
+  draft_run_status: DraftRunStatus | null;
   last_message_at: string;
   last_from: string | null;
+}
+
+export interface Attachment {
+  id: number;
+  message_id: number;
+  filename: string | null;
+  content_type: string;
+  size: number;
+  disposition: "attachment" | "inline" | null;
+  content_id: string | null;
 }
 
 export interface Message {
@@ -60,11 +71,13 @@ export interface Message {
   from_address: string;
   from_name: string | null;
   to_addresses: string;
+  reply_to_addresses: string;
   subject: string;
   text_body: string | null;
   html_body: string | null;
   is_auto_submitted: number;
   created_at: string;
+  attachments: Attachment[];
 }
 
 export interface Draft {
@@ -83,4 +96,30 @@ export interface ThreadDetail {
   thread: ThreadSummary;
   messages: Message[];
   drafts: Draft[];
+  draft_run: DraftRun | null;
+}
+
+export type DraftRunStatus = "queued" | "generating" | "ready" | "failed" | "superseded";
+
+export interface DraftRun {
+  id: number;
+  thread_id: number;
+  inbound_message_id: number;
+  status: DraftRunStatus;
+  attempt_count: number;
+  draft_id: number | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export type ReplyAttemptStatus = "pending" | "sending" | "sent" | "failed";
+
+export interface ReplyAttemptResult {
+  ok: boolean;
+  attempt_id: string;
+  status: ReplyAttemptStatus;
+  message_id: string | null;
+  error?: string;
 }

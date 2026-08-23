@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { sendEmail } from "../email/send";
-import type { Domain, Mailbox, Message, PlaybookInput } from "../../shared/types";
+import { enqueueDraftRun } from "../agent/runs";
+import { ReplyIntentError, sendReplyAttempt } from "../email/reply";
+import type { Attachment, Domain, DraftRun, Mailbox, Message, PlaybookInput } from "../../shared/types";
 
 export const api = new Hono<{ Bindings: Env }>();
 
@@ -227,6 +228,8 @@ api.get("/threads", async (c) => {
         ORDER BY msg.created_at DESC LIMIT 1) AS last_from,
        (SELECT COUNT(*) FROM drafts d
         WHERE d.thread_id = t.id AND d.status = 'pending') AS pending_draft_count
+      ,(SELECT dr.status FROM draft_runs dr
+        WHERE dr.thread_id = t.id ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1) AS draft_run_status
      FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id
      WHERE ${conditions.join(" AND ")}
      ORDER BY t.last_message_at DESC LIMIT 100`,
@@ -246,7 +249,7 @@ api.get("/threads/:id", async (c) => {
     .first();
   if (!thread) return c.json({ error: "thread not found" }, 404);
 
-  const [messages, drafts] = await Promise.all([
+  const [messages, drafts, draftRun] = await Promise.all([
     c.env.DB.prepare("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at").bind(id).all(),
     c.env.DB.prepare(
       `SELECT d.*, p.name AS playbook_name
@@ -256,8 +259,83 @@ api.get("/threads/:id", async (c) => {
     )
       .bind(id)
       .all(),
+    c.env.DB.prepare(
+      `SELECT * FROM draft_runs
+       WHERE thread_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
+    )
+      .bind(id)
+      .first<DraftRun>(),
   ]);
-  return c.json({ thread, messages: messages.results, drafts: drafts.results });
+
+  const messageRows = messages.results as unknown as Message[];
+  const messageIds = messageRows.map((message) => message.id);
+  let attachments: Attachment[] = [];
+  if (messageIds.length > 0) {
+    const placeholders = messageIds.map(() => "?").join(", ");
+    const result = await c.env.DB.prepare(
+      `SELECT id, message_id, filename, content_type, size, disposition, content_id
+       FROM attachments WHERE message_id IN (${placeholders}) ORDER BY id`,
+    )
+      .bind(...messageIds)
+      .all<Attachment>();
+    attachments = result.results;
+  }
+  const attachmentsByMessage = new Map<number, Attachment[]>();
+  for (const attachment of attachments) {
+    const list = attachmentsByMessage.get(attachment.message_id) ?? [];
+    list.push(attachment);
+    attachmentsByMessage.set(attachment.message_id, list);
+  }
+  const enrichedMessages = messageRows.map((message) => ({
+    ...message,
+    attachments: attachmentsByMessage.get(message.id) ?? [],
+  }));
+  return c.json({
+    thread,
+    messages: enrichedMessages,
+    drafts: drafts.results,
+    draft_run: draftRun ?? null,
+  });
+});
+
+api.get("/attachments/:id", async (c) => {
+  const id = parsePositiveId(c.req.param("id"));
+  if (id === null) return c.json({ error: "Invalid attachment" }, 400);
+  const attachment = await c.env.DB.prepare(
+    `SELECT filename, content_type, size, r2_key FROM attachments WHERE id = ?`,
+  )
+    .bind(id)
+    .first<{ filename: string | null; content_type: string; size: number; r2_key: string }>();
+  if (!attachment) return c.json({ error: "Attachment not found" }, 404);
+  const object = await c.env.RAW.get(attachment.r2_key);
+  if (!object) return c.json({ error: "Attachment file is unavailable" }, 404);
+
+  const filename = attachment.filename || `attachment-${id}`;
+  const headers = new Headers({
+    "Content-Type": attachment.content_type || "application/octet-stream",
+    "Content-Length": String(attachment.size),
+    "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  return new Response(object.body, { headers });
+});
+
+api.post("/draft-runs/:id/retry", async (c) => {
+  const id = parsePositiveId(c.req.param("id"));
+  if (id === null) return c.json({ error: "Invalid Draft Run" }, 400);
+  const run = await c.env.DB.prepare(
+    "SELECT id, thread_id, inbound_message_id, status FROM draft_runs WHERE id = ?",
+  )
+    .bind(id)
+    .first<{ id: number; thread_id: number; inbound_message_id: number; status: string }>();
+  if (!run) return c.json({ error: "Draft Run not found" }, 404);
+  if (run.status === "superseded") {
+    return c.json({ error: "A newer customer message has replaced this Draft Run" }, 409);
+  }
+  if (run.status === "ready") return c.json({ error: "This draft is already ready" }, 409);
+  await enqueueDraftRun(c.env, run.thread_id, run.inbound_message_id);
+  return c.json({ ok: true });
 });
 
 api.post("/threads/:id/read", async (c) => {
@@ -273,80 +351,40 @@ api.post("/threads/:id/archive", async (c) => {
 });
 
 api.post("/threads/:id/reply", async (c) => {
-  const threadId = c.req.param("id");
-  const { text, draft_id } = await c.req.json<{ text: string; draft_id?: number }>();
+  const threadId = parsePositiveId(c.req.param("id"));
+  if (threadId === null) return c.json({ error: "Invalid conversation" }, 400);
+
+  const { text, draft_id, attempt_id } = await c.req.json<{
+    text: string;
+    draft_id?: number;
+    attempt_id?: string;
+  }>();
   if (!text?.trim()) return c.json({ error: "text is required" }, 400);
-
-  const thread = await c.env.DB.prepare(
-    `SELECT t.id, t.subject, t.mailbox_id, m.address AS mailbox_address
-     FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id WHERE t.id = ?`,
-  )
-    .bind(threadId)
-    .first<{
-      id: number;
-      subject: string;
-      mailbox_id: number;
-      mailbox_address: string;
-    }>();
-  if (!thread) return c.json({ error: "thread not found" }, 404);
-
-  const lastInbound = await c.env.DB.prepare(
-    `SELECT * FROM messages WHERE thread_id = ? AND direction = 'inbound'
-     ORDER BY created_at DESC LIMIT 1`,
-  )
-    .bind(threadId)
-    .first<Message & { message_id: string; references_ids: string }>();
-  if (!lastInbound) return c.json({ error: "no inbound message to reply to" }, 400);
-
-  const references = [
-    ...(JSON.parse(lastInbound.references_ids || "[]") as string[]),
-    lastInbound.message_id,
-  ];
-  const subject = /^re:/i.test(thread.subject) ? thread.subject : `Re: ${thread.subject}`;
-
-  const { messageId } = await sendEmail(c.env, {
-    from: { address: thread.mailbox_address },
-    to: [lastInbound.from_address],
-    subject,
-    text,
-    inReplyTo: lastInbound.message_id,
-    references,
-  });
-
-  const now = new Date().toISOString();
-  const statements = [
-    c.env.DB.prepare(
-      `INSERT INTO messages
-         (thread_id, message_id, in_reply_to, references_ids, direction, sent_by,
-          from_address, from_name, to_addresses, subject, text_body, created_at)
-       VALUES (?, ?, ?, ?, 'outbound', 'human', ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      threadId,
-      messageId,
-      lastInbound.message_id,
-      JSON.stringify(references),
-      thread.mailbox_address,
-      null,
-      JSON.stringify([lastInbound.from_address]),
-      subject,
-      text,
-      now,
-    ),
-    c.env.DB.prepare(
-      `UPDATE threads SET snippet = ?, message_count = message_count + 1, last_message_at = ?, is_read = 1
-       WHERE id = ?`,
-    ).bind(text.replace(/\s+/g, " ").trim().slice(0, 140), now, threadId),
-  ];
-  if (draft_id) {
-    statements.push(
-      c.env.DB.prepare("UPDATE drafts SET status = 'sent' WHERE id = ? AND thread_id = ?").bind(
-        draft_id,
-        threadId,
-      ),
-    );
+  if (!attempt_id || attempt_id.length > 120 || !/^[a-zA-Z0-9_-]+$/.test(attempt_id)) {
+    return c.json({ error: "attempt_id is required" }, 400);
   }
-  await c.env.DB.batch(statements);
-  return c.json({ ok: true, message_id: messageId });
+  if (draft_id !== undefined && (!Number.isInteger(draft_id) || draft_id <= 0)) {
+    return c.json({ error: "invalid draft_id" }, 400);
+  }
+
+  try {
+    const result = await sendReplyAttempt(c.env, {
+      attemptId: attempt_id,
+      threadId,
+      text,
+      draftId: draft_id,
+    });
+    if (result.status === "failed") return c.json(result, 502);
+    if (result.status === "pending" || result.status === "sending") return c.json(result, 202);
+    return c.json(result);
+  } catch (error) {
+    if (error instanceof ReplyIntentError) {
+      if (error.status === 404) return c.json({ error: error.message }, 404);
+      if (error.status === 409) return c.json({ error: error.message }, 409);
+      if (error.status === 400) return c.json({ error: error.message }, 400);
+    }
+    throw error;
+  }
 });
 
 api.post("/drafts/:id/discard", async (c) => {
@@ -367,6 +405,8 @@ api.get("/search", async (c) => {
         ORDER BY msg.created_at DESC LIMIT 1) AS last_from,
        (SELECT COUNT(*) FROM drafts d
         WHERE d.thread_id = t.id AND d.status = 'pending') AS pending_draft_count
+      ,(SELECT dr.status FROM draft_runs dr
+        WHERE dr.thread_id = t.id ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1) AS draft_run_status
      FROM messages_fts f
      JOIN messages msg ON msg.id = f.rowid
      JOIN threads t ON t.id = msg.thread_id

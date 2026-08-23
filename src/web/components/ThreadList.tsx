@@ -241,7 +241,7 @@ function ThreadRow(props: {
           {thread.snippet}
         </span>
 
-        {(props.showMailbox || thread.pending_draft_count > 0) && (
+        {(props.showMailbox || thread.pending_draft_count > 0 || thread.draft_run_status === "failed" || thread.draft_run_status === "queued" || thread.draft_run_status === "generating") && (
           <span className="mt-2 flex min-w-0 items-center gap-2">
             {props.showMailbox && (
               <Badge variant="secondary" className="h-5 min-w-0 px-1.5 text-[9.5px] font-normal">
@@ -252,6 +252,18 @@ function ThreadRow(props: {
               <Badge variant="outline" className="h-5 shrink-0 gap-1 px-1.5 text-[9.5px] font-normal">
                 <SparklesIcon className="h-3 w-3" />
                 Draft
+              </Badge>
+            )}
+            {thread.pending_draft_count === 0 &&
+              (thread.draft_run_status === "queued" || thread.draft_run_status === "generating") && (
+                <Badge variant="outline" className="h-5 shrink-0 gap-1 px-1.5 text-[9.5px] font-normal">
+                  <SparklesIcon className="h-3 w-3 animate-pulse" />
+                  Drafting
+                </Badge>
+              )}
+            {thread.draft_run_status === "failed" && (
+              <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[9.5px] font-normal text-red-700">
+                Draft failed
               </Badge>
             )}
           </span>

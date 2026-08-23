@@ -10,12 +10,13 @@ Runs entirely on Cloudflare: Workers, Email Routing, D1, R2.
 ## Architecture
 
 ```
-inbound email ──► Email Routing ──► email() handler ──► D1 (threads/messages) + R2 (raw MIME)
+inbound email ──► Email Routing ──► email() handler ──► D1 + R2 (raw MIME / attachments)
+                                                          │
+                                              Queue ──► Draft Run ──► Agent Draft
                                                           │
 web UI (React SPA) ──► /api (Hono) ───────────────────────┤
 external agents ──► /mcp (MCP server, planned) ───────────┤
-auto-reply agent (planned) ◄── triage ◄───────────────────┘
-outbound ──► Cloudflare Email Sending (beta; provider swappable behind email/send.ts)
+outbound Reply Attempt ──► Cloudflare Email Sending ──────┘
 ```
 
 - **Multiple inboxes, one workspace.** Every receiving address is a row in
@@ -23,9 +24,16 @@ outbound ──► Cloudflare Email Sending (beta; provider swappable behind ema
   explicitly in Settings, and unknown recipient addresses are rejected. Each
   mailbox has its own agent mode (`off` / `draft` / `auto`) and instructions.
 - **Threading** follows RFC headers (`In-Reply-To` / `References`) with a
-  normalized-subject fallback.
+  sender-aware, reply-only normalized-subject fallback. New inbound mail
+  reopens an archived Conversation.
 - **Loop prevention**: auto-submitted senders (RFC 3834, `Precedence: bulk`,
   list mail) are flagged and must never receive automated replies.
+- **Reliable drafting**: each latest inbound Message gets a retryable Draft Run
+  on Cloudflare Queues. Stale runs cannot overwrite a newer Agent Draft.
+- **At-most-once replies**: every approved send is a durable Reply Attempt.
+  Browser retries reuse it rather than sending the customer another email.
+- **Attachments and Reply-To**: inbound files are stored in R2 and downloadable
+  from the Conversation; replies prefer the sender's `Reply-To` address.
 
 ## Setup
 
@@ -39,6 +47,10 @@ wrangler r2 bucket create agentic-inbox-raw
 # 2. Apply schema (+ optional demo data)
 npm run db:migrate:local
 npm run db:seed:local
+
+# Create the production drafting queues once
+wrangler queues create agentic-inbox-drafts
+wrangler queues create agentic-inbox-drafts-dlq
 
 # 3. Local dev (web UI + API at http://localhost:5173)
 npm run dev
@@ -71,6 +83,7 @@ With `wrangler dev` running:
 
 ```sh
 npm run email:test
+npm run email:test:attachment
 ```
 
 This POSTs `scripts/test-email.eml` to the local email handler endpoint.
@@ -93,9 +106,9 @@ so refresh, browser history, and shared links preserve the current view.
 
 - [ ] MCP server at `/mcp` — `list_threads` / `get_thread` / `reply` for external agents
 - [ ] Triage: rules + small-model classification on inbound mail
-- [ ] Auto-reply agent (per-mailbox instructions + external MCP tools, e.g. Stripe), draft mode first
+- [ ] External tools for the draft agent (for example Stripe or product databases)
+- [ ] Delivery and bounce status inside the Conversation (available today in Cloudflare Email Logs)
 - [ ] Full-text search UI (backend `/api/search` already works)
-- [ ] Attachments (stored in R2, rendered in UI)
 
 ## License
 

@@ -1,13 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { archiveThread, discardDraft, fetchThread, markRead, sendReply } from "../api";
-import type { Draft, Message } from "../../shared/types";
+import {
+  archiveThread,
+  discardDraft,
+  fetchThread,
+  markRead,
+  retryDraftRun,
+  sendReply,
+} from "../api";
+import type { Draft, DraftRun, Message } from "../../shared/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { avatarClass, formatTime, initialOf, splitQuotedTail } from "../lib";
-import { ArchiveIcon, ArrowLeftIcon, InboxIcon, SendIcon, SparklesIcon } from "./Icons";
+import {
+  ArchiveIcon,
+  ArrowLeftIcon,
+  InboxIcon,
+  PaperclipIcon,
+  SendIcon,
+  SparklesIcon,
+} from "./Icons";
 
 export function ThreadView(props: {
   threadId: number;
@@ -16,11 +30,18 @@ export function ThreadView(props: {
 }) {
   const queryClient = useQueryClient();
   const [replyText, setReplyText] = useState("");
+  const [sendNotice, setSendNotice] = useState<string | null>(null);
+  const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
+  const attemptIds = useRef(new Map<string, { text: string; id: string }>());
 
   const detail = useQuery({
     queryKey: ["thread", props.threadId],
     queryFn: () => fetchThread(props.threadId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.draft_run?.status;
+      return status === "queued" || status === "generating" ? 3_000 : 30_000;
+    },
   });
 
   useEffect(() => {
@@ -29,6 +50,9 @@ export function ThreadView(props: {
       queryClient.invalidateQueries({ queryKey: ["mailboxes"] });
     });
     setReplyText("");
+    setSendNotice(null);
+    setFailedAttemptKey(null);
+    attemptIds.current.clear();
   }, [props.threadId, queryClient]);
 
   useEffect(() => {
@@ -46,12 +70,19 @@ export function ThreadView(props: {
   };
 
   const reply = useMutation({
-    mutationFn: (args: { text: string; draftId?: number }) =>
-      sendReply(props.threadId, args.text, args.draftId),
-    onSuccess: () => {
-      setReplyText("");
+    mutationFn: (args: { text: string; attemptId: string; attemptKey: string; draftId?: number }) =>
+      sendReply(props.threadId, args.text, args.attemptId, args.draftId),
+    onSuccess: (result, args) => {
+      if (result.status === "sent" && args.draftId === undefined) setReplyText("");
+      setFailedAttemptKey(null);
+      setSendNotice(
+        result.status === "sending"
+          ? "The provider accepted this send request, but confirmation is still pending. It will not be sent again automatically."
+          : null,
+      );
       invalidateAll();
     },
+    onError: (_error, args) => setFailedAttemptKey(args.attemptKey),
   });
 
   const discard = useMutation({
@@ -65,6 +96,11 @@ export function ThreadView(props: {
       invalidateAll();
       props.onArchived();
     },
+  });
+
+  const retryDraft = useMutation({
+    mutationFn: (runId: number) => retryDraftRun(runId),
+    onSuccess: invalidateAll,
   });
 
   if (detail.isLoading) return <ThreadViewSkeleton onBack={props.onBack} />;
@@ -95,8 +131,19 @@ export function ThreadView(props: {
 
   const { thread, messages, drafts } = detail.data;
 
+  const attemptFor = (key: string, text: string) => {
+    const existing = attemptIds.current.get(key);
+    if (existing?.text === text) return existing.id;
+    const id = crypto.randomUUID();
+    attemptIds.current.set(key, { text, id });
+    return id;
+  };
+
   const submitReply = () => {
-    if (replyText.trim() && !reply.isPending) reply.mutate({ text: replyText });
+    const text = replyText.trim();
+    if (text && !reply.isPending) {
+      reply.mutate({ text, attemptId: attemptFor("manual", text), attemptKey: "manual" });
+    }
   };
 
   return (
@@ -141,13 +188,27 @@ export function ThreadView(props: {
           {messages.map((message) => (
             <MessageCard key={message.id} message={message} />
           ))}
+          {drafts.length === 0 && detail.data.draft_run && (
+            <DraftRunState
+              run={detail.data.draft_run}
+              retrying={retryDraft.isPending}
+              onRetry={() => retryDraft.mutate(detail.data.draft_run!.id)}
+            />
+          )}
           {drafts.map((draft) => (
             <DraftCard
               key={draft.id}
               draft={draft}
               sending={reply.isPending}
               discarding={discard.isPending}
-              onSend={(text) => reply.mutate({ text, draftId: draft.id })}
+              onSend={(text) =>
+                reply.mutate({
+                  text,
+                  draftId: draft.id,
+                  attemptKey: `draft-${draft.id}`,
+                  attemptId: attemptFor(`draft-${draft.id}`, text.trim()),
+                })
+              }
               onDiscard={() => discard.mutate(draft.id)}
             />
           ))}
@@ -187,8 +248,30 @@ export function ThreadView(props: {
             </div>
           </Card>
           {reply.isError && (
-            <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">
-              Failed to send. Your reply is still here — please try again.
+            <div className="mt-2 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">
+              <p className="min-w-0 flex-1">
+                {reply.error instanceof Error ? reply.error.message : "The reply could not be sent."}
+                {" "}Your text is still here. Check Email Logs before creating a new send attempt.
+              </p>
+              {failedAttemptKey && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 bg-white text-foreground"
+                  onClick={() => {
+                    attemptIds.current.delete(failedAttemptKey);
+                    setFailedAttemptKey(null);
+                    reply.reset();
+                  }}
+                >
+                  New attempt
+                </Button>
+              )}
+            </div>
+          )}
+          {sendNotice && (
+            <div className="mt-2 rounded-lg border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+              {sendNotice}
             </div>
           )}
         </div>
@@ -234,6 +317,22 @@ function MessageCard({ message }: { message: Message }) {
       </div>
 
       <div className="text-[13.5px] leading-6 whitespace-pre-wrap text-slate-800">{main}</div>
+      {message.attachments.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2" aria-label="Attachments">
+          {message.attachments.map((attachment) => (
+            <a
+              key={attachment.id}
+              href={`/api/attachments/${attachment.id}`}
+              download={attachment.filename || undefined}
+              className="inline-flex max-w-full items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-[11px] text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <PaperclipIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">{attachment.filename || "Attachment"}</span>
+              <span className="shrink-0 text-muted-foreground">{formatFileSize(attachment.size)}</span>
+            </a>
+          ))}
+        </div>
+      )}
       {quoted && (
         <div className="mt-3">
           <Button
@@ -252,6 +351,44 @@ function MessageCard({ message }: { message: Message }) {
       )}
     </Card>
   );
+}
+
+function DraftRunState(props: {
+  run: DraftRun;
+  retrying: boolean;
+  onRetry: () => void;
+}) {
+  if (props.run.status === "ready" || props.run.status === "superseded") return null;
+  const working = props.run.status === "queued" || props.run.status === "generating";
+
+  return (
+    <div className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3.5">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-muted/30 text-muted-foreground">
+        <SparklesIcon className={`h-4 w-4 ${working ? "animate-pulse" : ""}`} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-foreground">
+          {working ? "Preparing a draft…" : "Draft generation failed"}
+        </p>
+        {!working && (
+          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+            {props.run.error || "The model did not return a draft."}
+          </p>
+        )}
+      </div>
+      {!working && (
+        <Button variant="outline" size="sm" onClick={props.onRetry} disabled={props.retrying}>
+          {props.retrying ? "Retrying…" : "Try again"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.max(0.1, bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function AuthorBadge(props: { tone: "agent" | "human"; children: React.ReactNode }) {

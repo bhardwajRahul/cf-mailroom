@@ -14,4 +14,5 @@ interface Env {
   RAW: R2Bucket;
   EMAIL: OutboundEmailBinding;
   AI: Ai;
+  DRAFT_QUEUE: Queue<{ runId: number }>;
 }

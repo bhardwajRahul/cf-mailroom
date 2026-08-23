@@ -125,3 +125,11 @@ export function XIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function PaperclipIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="m20.5 11.5-8.1 8.1a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9.1 9.1a2 2 0 0 1-2.8-2.8l8.4-8.4" />
+    </svg>
+  );
+}

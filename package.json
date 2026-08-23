@@ -6,11 +6,14 @@
     "dev": "vite",
     "build": "vite build",
     "check": "tsc -b",
+    "test": "node --test --experimental-strip-types tests/*.test.mjs",
     "deploy": "npm run build && wrangler deploy --config dist/agentic_inbox/wrangler.json",
     "db:migrate:local": "wrangler d1 migrations apply agentic-inbox --local",
     "db:migrate": "wrangler d1 migrations apply agentic-inbox --remote",
     "db:seed:local": "wrangler d1 execute agentic-inbox --local --file=./scripts/seed.sql",
     "email:test": "curl -X POST 'http://localhost:5173/cdn-cgi/handler/email?from=customer@example.com&to=support@yourdomain.com' -H 'Content-Type: message/rfc822' --data-binary @./scripts/test-email.eml",
+    "email:test:attachment": "curl -X POST 'http://localhost:5173/cdn-cgi/handler/email?from=forms@example.com&to=support@yourdomain.com' -H 'Content-Type: message/rfc822' --data-binary @./scripts/test-email-attachment.eml",
+    "email:test:reopen": "curl -X POST 'http://localhost:5173/cdn-cgi/handler/email?from=forms@example.com&to=support@yourdomain.com' -H 'Content-Type: message/rfc822' --data-binary @./scripts/test-email-reopen.eml",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
