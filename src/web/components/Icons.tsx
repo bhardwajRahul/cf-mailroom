@@ -133,3 +133,12 @@ export function PaperclipIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M14 4h6v6M20 4l-9 9" />
+      <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" />
+    </svg>
+  );
+}

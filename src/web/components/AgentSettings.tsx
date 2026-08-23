@@ -41,6 +41,7 @@ import {
 } from "../api";
 import {
   ArrowLeftIcon,
+  ExternalLinkIcon,
   PencilIcon,
   PlusIcon,
   SettingsIcon,
@@ -62,6 +63,11 @@ interface InboxSetupState {
   localPart: string;
   domainName: string;
 }
+
+const CLOUDFLARE_EMAIL_ROUTING_URL =
+  "https://dash.cloudflare.com/?to=%2F%3Aaccount%2Femail-service%2Frouting";
+const CLOUDFLARE_EMAIL_SENDING_URL =
+  "https://dash.cloudflare.com/?to=%2F%3Aaccount%2Femail-service%2Fsending";
 
 const EMPTY_PLAYBOOK: PlaybookEditorState = {
   name: "",
@@ -461,47 +467,72 @@ export function AgentSettings(props: {
                   </Button>
                 </div>
 
-                <fieldset className="divide-y" aria-describedby="cloudflare-setup-note">
+                <fieldset className="divide-y">
                   <legend className="sr-only">Cloudflare setup checklist</legend>
-                  <label
-                    htmlFor="confirm-email-routing"
-                    className="flex cursor-pointer items-start gap-3 py-4"
-                  >
+                  <div className="flex items-start gap-3 py-4">
                     <Checkbox
                       id="confirm-email-routing"
                       checked={routingConfirmed}
                       onCheckedChange={(checked) => setRoutingConfirmed(checked === true)}
-                      className="mt-0.5"
+                      aria-labelledby="email-routing-title"
+                      className="mt-1"
                     />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">Incoming mail is routed</span>
-                      <span className="mt-1 block text-sm leading-5 text-muted-foreground">
-                        Email Routing sends mail for {inboxSetup.domainName} to the agentic-inbox Worker.
-                      </span>
-                    </span>
-                  </label>
-                  <label
-                    htmlFor="confirm-email-sending"
-                    className="flex cursor-pointer items-start gap-3 py-4"
-                  >
+                    <div className="min-w-0 flex-1">
+                      <label
+                        id="email-routing-title"
+                        htmlFor="confirm-email-routing"
+                        className="cursor-pointer text-sm font-medium"
+                      >
+                        Configure incoming mail
+                      </label>
+                      <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                        Onboard {inboxSetup.domainName}, then create a rule for {inboxSetup.address}:
+                        <span className="block">Send to a Worker → agentic-inbox.</span>
+                      </p>
+                      <Button asChild type="button" variant="outline" size="sm" className="mt-3">
+                        <a
+                          href={CLOUDFLARE_EMAIL_ROUTING_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open Email Routing
+                          <ExternalLinkIcon />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 py-4">
                     <Checkbox
                       id="confirm-email-sending"
                       checked={sendingConfirmed}
                       onCheckedChange={(checked) => setSendingConfirmed(checked === true)}
-                      className="mt-0.5"
+                      aria-labelledby="email-sending-title"
+                      className="mt-1"
                     />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">Outbound sending is active</span>
-                      <span className="mt-1 block text-sm leading-5 text-muted-foreground">
-                        {inboxSetup.domainName} is onboarded in Cloudflare Email Sending.
-                      </span>
-                    </span>
-                  </label>
+                    <div className="min-w-0 flex-1">
+                      <label
+                        id="email-sending-title"
+                        htmlFor="confirm-email-sending"
+                        className="cursor-pointer text-sm font-medium"
+                      >
+                        Configure outbound sending
+                      </label>
+                      <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                        Onboard {inboxSetup.domainName} in Email Sending and wait for it to become active.
+                      </p>
+                      <Button asChild type="button" variant="outline" size="sm" className="mt-3">
+                        <a
+                          href={CLOUDFLARE_EMAIL_SENDING_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open Email Sending
+                          <ExternalLinkIcon />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
                 </fieldset>
-
-                <p id="cloudflare-setup-note" className="text-xs leading-5 text-muted-foreground">
-                  Confirm each item only after completing it in Cloudflare.
-                </p>
 
                 {configureAndAddMailbox.isError && (
                   <p className="text-sm text-destructive" role="alert">
@@ -513,33 +544,36 @@ export function AgentSettings(props: {
               </div>
             )}
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setMailboxEditorOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  domains.isLoading ||
-                  domains.isError ||
-                  (!inboxSetup && !mailboxAddress.trim()) ||
-                  (inboxSetup !== null && setupStepsRemaining > 0) ||
-                  addMailbox.isPending ||
-                  configureAndAddMailbox.isPending
-                }
-              >
-                {addMailbox.isPending || configureAndAddMailbox.isPending
-                  ? "Adding…"
-                  : inboxSetup
-                    ? setupStepsRemaining > 0
-                      ? `${setupStepsRemaining} step${setupStepsRemaining === 1 ? "" : "s"} remaining`
-                      : "Add inbox"
+            <DialogFooter className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {inboxSetup && (
+                <p className="mr-auto text-xs text-muted-foreground" aria-live="polite">
+                  {2 - setupStepsRemaining} of 2 complete
+                </p>
+              )}
+              <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setMailboxEditorOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    domains.isLoading ||
+                    domains.isError ||
+                    (!inboxSetup && !mailboxAddress.trim()) ||
+                    (inboxSetup !== null && setupStepsRemaining > 0) ||
+                    addMailbox.isPending ||
+                    configureAndAddMailbox.isPending
+                  }
+                >
+                  {addMailbox.isPending || configureAndAddMailbox.isPending
+                    ? "Adding…"
                     : "Add inbox"}
-              </Button>
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
