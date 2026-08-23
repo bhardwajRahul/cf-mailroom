@@ -11,7 +11,6 @@ import {
 } from "react-router";
 import { fetchMailboxes, fetchThreads, searchThreads } from "./api";
 import { AgentSettings } from "./components/AgentSettings";
-import { InboxIcon } from "./components/Icons";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadList, type ThreadFilter } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
@@ -136,6 +135,15 @@ function Workspace(props: {
       ? "All inboxes"
       : (mailboxes.data?.find((mailbox) => mailbox.id === selectedMailbox)?.address ??
         "Inbox");
+  const inboxIsEmpty =
+    props.view === "inbox" &&
+    selectedThread === null &&
+    !threads.isLoading &&
+    !threads.isError &&
+    !threads.isPlaceholderData &&
+    deferredSearch === "" &&
+    filter === "all" &&
+    threads.data?.length === 0;
 
   return (
     <div className="flex h-dvh min-h-[560px] overflow-hidden bg-background text-foreground antialiased">
@@ -171,6 +179,7 @@ function Workspace(props: {
             fetching={threads.isFetching}
             error={threads.isError}
             detailsOpen={selectedThread !== null}
+            emptyInbox={inboxIsEmpty}
             onSearch={(query) => updateQuery("q", query)}
             onFilter={(nextFilter) => updateQuery("filter", nextFilter, "all")}
             onSelectMailbox={selectMailbox}
@@ -189,14 +198,7 @@ function Workspace(props: {
                 onArchived={() => navigate({ pathname: listPath, search: location.search })}
               />
             ) : (
-              <div className="h-full bg-muted/20 px-6 py-10">
-                <span className="flex h-12 w-12 items-center justify-center rounded-lg border bg-background text-muted-foreground">
-                  <InboxIcon className="h-6 w-6" />
-                </span>
-                <div className="mt-3 text-left">
-                  <p className="text-sm font-medium text-slate-600">Choose a conversation</p>
-                </div>
-              </div>
+              <div className="h-full bg-muted/20" />
             )}
           </main>
         </>

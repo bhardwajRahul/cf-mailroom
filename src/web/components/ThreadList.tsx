@@ -34,6 +34,7 @@ export function ThreadList(props: {
   fetching: boolean;
   error: boolean;
   detailsOpen: boolean;
+  emptyInbox: boolean;
   onSearch: (q: string) => void;
   onFilter: (filter: ThreadFilter) => void;
   onSelectMailbox: (id: number | null) => void;
@@ -72,15 +73,16 @@ export function ThreadList(props: {
     >
       <header className="border-b px-4 pt-4 pb-3">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
+          <div className="hidden min-w-0 flex-1 lg:block">
             <div className="flex items-center gap-2">
-              <InboxIcon className="h-[17px] w-[17px] shrink-0 text-muted-foreground lg:hidden" />
               <h1 className="truncate text-base font-semibold tracking-[-0.02em] text-foreground">
                 {props.title}
               </h1>
-              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] tabular-nums">
-                {props.threads.length}
-              </Badge>
+              {!props.emptyInbox && (
+                <Badge variant="secondary" className="h-5 px-1.5 text-[10px] tabular-nums">
+                  {props.threads.length}
+                </Badge>
+              )}
               <span
                 className="relative h-4 w-4 shrink-0"
                 role="status"
@@ -99,14 +101,14 @@ export function ThreadList(props: {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 lg:hidden">
+          <div className="flex min-w-0 flex-1 items-center justify-between gap-2 lg:hidden">
             <Select
               value={String(props.selectedMailbox ?? "all")}
               onValueChange={(value) =>
                 props.onSelectMailbox(value === "all" ? null : Number(value))
               }
             >
-              <SelectTrigger size="sm" className="max-w-[130px] text-xs">
+              <SelectTrigger size="sm" className="min-w-0 max-w-[calc(100%-2.75rem)] text-xs">
                 <SelectValue placeholder="All inboxes" />
               </SelectTrigger>
               <SelectContent>
@@ -129,47 +131,55 @@ export function ThreadList(props: {
           </div>
         </div>
 
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchRef}
-            value={props.search}
-            onChange={(event) => props.onSearch(event.target.value)}
-            placeholder="Search conversations"
-            aria-label="Search conversations"
-            className="h-9 w-full bg-background pr-9 pl-9 text-[13px]"
-          />
-          {props.search ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => props.onSearch("")}
-              className="absolute top-1/2 right-1.5 -translate-y-1/2 text-muted-foreground"
-              aria-label="Clear search"
-            >
-              Esc
-            </Button>
-          ) : (
-            <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded border bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground sm:block">
-              /
-            </kbd>
-          )}
-        </div>
+        {!props.emptyInbox && (
+          <>
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={searchRef}
+                value={props.search}
+                onChange={(event) => props.onSearch(event.target.value)}
+                placeholder="Search conversations"
+                aria-label="Search conversations"
+                className="h-9 w-full bg-background pr-9 pl-9 text-[13px]"
+              />
+              {props.search ? (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => props.onSearch("")}
+                  className="absolute top-1/2 right-1.5 -translate-y-1/2 text-muted-foreground"
+                  aria-label="Clear search"
+                >
+                  Esc
+                </Button>
+              ) : (
+                <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded border bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground sm:block">
+                  /
+                </kbd>
+              )}
+            </div>
 
-        <Tabs
-          value={props.filter}
-          onValueChange={(value) => props.onFilter(value as ThreadFilter)}
-          className="mt-3 items-start gap-0"
-        >
-          <TabsList aria-label="Conversation filter">
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="unread">Unread{unreadCount > 0 ? ` ${unreadCount}` : ""}</TabsTrigger>
-            <TabsTrigger value="drafts">Drafts{draftCount > 0 ? ` ${draftCount}` : ""}</TabsTrigger>
-          </TabsList>
-        </Tabs>
+            <Tabs
+              value={props.filter}
+              onValueChange={(value) => props.onFilter(value as ThreadFilter)}
+              className="mt-3 items-start gap-0"
+            >
+              <TabsList aria-label="Conversation filter">
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="unread">Unread{unreadCount > 0 ? ` ${unreadCount}` : ""}</TabsTrigger>
+                <TabsTrigger value="drafts">Drafts{draftCount > 0 ? ` ${draftCount}` : ""}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {props.emptyInbox && (
+          <p className="px-4 py-6 text-sm text-muted-foreground">No conversations</p>
+        )}
+
         {props.loading && <ThreadListSkeleton />}
 
         {props.error && !props.loading && (
@@ -180,7 +190,7 @@ export function ThreadList(props: {
           />
         )}
 
-        {!props.loading && !props.error && visibleThreads.length === 0 && (
+        {!props.emptyInbox && !props.loading && !props.error && visibleThreads.length === 0 && (
           <ListState
             icon={props.filter === "drafts" ? <SparklesIcon className="h-5 w-5" /> : <InboxIcon className="h-5 w-5" />}
             title={props.search ? "No matching conversations" : props.filter === "all" ? "Inbox zero" : `No ${props.filter} conversations`}
