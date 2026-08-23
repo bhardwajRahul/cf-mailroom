@@ -18,10 +18,10 @@ auto-reply agent (planned) ◄── triage ◄───────────
 outbound ──► Cloudflare Email Sending (beta; provider swappable behind email/send.ts)
 ```
 
-- **Multiple mailboxes, one inbox.** Every receiving address is a row in
-  `mailboxes`; the unified view queries across all of them. Unknown addresses
-  are auto-registered on first email (catch-all friendly). Each mailbox has its
-  own agent mode (`off` / `draft` / `auto`) and instructions.
+- **Multiple inboxes, one workspace.** Every receiving address is a row in
+  `mailboxes`; the unified view queries across all of them. Mailboxes are added
+  explicitly in Settings, and unknown recipient addresses are rejected. Each
+  mailbox has its own agent mode (`off` / `draft` / `auto`) and instructions.
 - **Threading** follows RFC headers (`In-Reply-To` / `References`) with a
   normalized-subject fallback.
 - **Loop prevention**: auto-submitted senders (RFC 3834, `Precedence: bulk`,
@@ -58,10 +58,12 @@ For each domain that should receive mail:
 3. Onboard the same domain to **Email Service** (dashboard → Email Service) so
    replies can be sent from it. Requires the Workers paid plan while Email
    Sending is in beta.
+4. Add the Inbox in **Settings**. The app infers its Domain and only asks for
+   these Cloudflare steps when that Domain has not been configured before.
 
-> Outbound uses the `send_email` binding with `"remote": true`, so `npm run
-> dev` sends real email through your Cloudflare account — replies you send in
-> local dev actually deliver.
+> Local development uses `wrangler.dev.jsonc`, which omits the AI and outbound
+> email bindings. Inbound handling, the API, and the web UI remain available;
+> sending a real reply requires the deployed Worker.
 
 ### Test the inbound pipeline locally
 
@@ -72,6 +74,16 @@ npm run email:test
 ```
 
 This POSTs `scripts/test-email.eml` to the local email handler endpoint.
+
+### Web routes
+
+- `/inbox` and `/inbox/:threadId` — unified inbox and a selected conversation
+- `/mailboxes/:mailboxId` — one Inbox
+- `/mailboxes/:mailboxId/threads/:threadId` — a conversation within that Inbox
+- `/settings/inboxes/:mailboxId` — Base Instructions and Playbooks for an Inbox
+
+Search and conversation filters are URL parameters (`?q=...&filter=unread|drafts`),
+so refresh, browser history, and shared links preserve the current view.
 
 > **Security note**: the web UI has no authentication. For a real deployment,
 > put the Worker behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)

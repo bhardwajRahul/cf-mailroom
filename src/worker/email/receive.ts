@@ -1,13 +1,18 @@
 import PostalMime, { type Email } from "postal-mime";
 import { generateDraft } from "../agent/draft";
-
-const MAILBOX_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+import { splitQuotedTail } from "../../shared/quote";
 
 export async function receiveEmail(
   message: ForwardableEmailMessage,
   env: Env,
   ctx: ExecutionContext,
 ): Promise<void> {
+  const mailbox = await findMailbox(env, message.to.trim().toLowerCase());
+  if (!mailbox) {
+    message.setReject("Inbox not configured");
+    return;
+  }
+
   const rawBuffer = await new Response(message.raw).arrayBuffer();
   const parsed = await PostalMime.parse(rawBuffer);
 
@@ -18,7 +23,6 @@ export async function receiveEmail(
     .first();
   if (duplicate) return;
 
-  const mailbox = await findOrCreateMailbox(env, message.to.toLowerCase());
   const rawKey = `raw/${mailbox.id}/${crypto.randomUUID()}.eml`;
   await env.RAW.put(rawKey, rawBuffer, {
     httpMetadata: { contentType: "message/rfc822" },
@@ -29,7 +33,7 @@ export async function receiveEmail(
   const referencesIds = extractMessageIds(parsed);
   const existingThreadId = await resolveThread(env, mailbox.id, subject, referencesIds);
   const now = new Date().toISOString();
-  const snippet = textBody.replace(/\s+/g, " ").trim().slice(0, 140);
+  const snippet = splitQuotedTail(textBody).main.replace(/\s+/g, " ").trim().slice(0, 140);
   let threadId: number;
 
   if (existingThreadId !== null) {
@@ -80,23 +84,13 @@ export async function receiveEmail(
   }
 }
 
-async function findOrCreateMailbox(
+async function findMailbox(
   env: Env,
   address: string,
-): Promise<{ id: number; agent_mode: string }> {
-  const existing = await env.DB.prepare("SELECT id, agent_mode FROM mailboxes WHERE address = ?")
+): Promise<{ id: number; agent_mode: string } | null> {
+  return env.DB.prepare("SELECT id, agent_mode FROM mailboxes WHERE address = ?")
     .bind(address)
     .first<{ id: number; agent_mode: string }>();
-  if (existing) return existing;
-
-  // Catch-all friendly: any address that receives mail becomes a mailbox.
-  const color = MAILBOX_COLORS[hashCode(address) % MAILBOX_COLORS.length];
-  const created = await env.DB.prepare(
-    "INSERT INTO mailboxes (address, color) VALUES (?, ?) RETURNING id, agent_mode",
-  )
-    .bind(address, color)
-    .first<{ id: number; agent_mode: string }>();
-  return created!;
 }
 
 /**
@@ -213,10 +207,4 @@ function htmlToText(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function hashCode(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
 }

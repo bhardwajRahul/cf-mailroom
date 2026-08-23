@@ -1,53 +1,293 @@
-import type { ThreadSummary } from "../../shared/types";
+import { useEffect, useMemo, useRef } from "react";
+import type { Mailbox, ThreadSummary } from "../../shared/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { avatarClass, formatTime, initialOf } from "../lib";
+import {
+  InboxIcon,
+  SearchIcon,
+  SettingsIcon,
+  SparklesIcon,
+} from "./Icons";
+
+export type ThreadFilter = "all" | "unread" | "drafts";
 
 export function ThreadList(props: {
+  mailboxes: Mailbox[];
   threads: ThreadSummary[];
+  title: string;
   selected: number | null;
+  selectedMailbox: number | null;
   showMailboxChip: boolean;
+  search: string;
+  filter: ThreadFilter;
+  loading: boolean;
+  fetching: boolean;
+  error: boolean;
+  detailsOpen: boolean;
+  onSearch: (q: string) => void;
+  onFilter: (filter: ThreadFilter) => void;
+  onSelectMailbox: (id: number | null) => void;
+  onOpenSettings: () => void;
   onSelect: (id: number) => void;
 }) {
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key === "/" && document.activeElement?.tagName !== "TEXTAREA") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  const visibleThreads = useMemo(() => {
+    if (props.filter === "unread") return props.threads.filter((thread) => !thread.is_read);
+    if (props.filter === "drafts") {
+      return props.threads.filter((thread) => thread.pending_draft_count > 0);
+    }
+    return props.threads;
+  }, [props.filter, props.threads]);
+
+  const unreadCount = props.threads.filter((thread) => !thread.is_read).length;
+  const draftCount = props.threads.filter((thread) => thread.pending_draft_count > 0).length;
+
   return (
-    <section className="flex w-96 shrink-0 flex-col overflow-y-auto border-r border-gray-200">
-      {props.threads.length === 0 && (
-        <div className="p-6 text-center text-sm text-gray-400">No conversations</div>
-      )}
-      {props.threads.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => props.onSelect(t.id)}
-          className={`border-b border-gray-100 px-4 py-3 text-left ${
-            props.selected === t.id ? "bg-indigo-50" : "hover:bg-gray-50"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {props.showMailboxChip && (
+    <section
+      className={`w-full shrink-0 flex-col border-r bg-background md:w-[368px] xl:w-[392px] ${
+        props.detailsOpen ? "hidden md:flex" : "flex"
+      }`}
+    >
+      <header className="border-b px-4 pt-4 pb-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <InboxIcon className="h-[17px] w-[17px] shrink-0 text-muted-foreground lg:hidden" />
+              <h1 className="truncate text-base font-semibold tracking-[-0.02em] text-foreground">
+                {props.title}
+              </h1>
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] tabular-nums">
+                {props.threads.length}
+              </Badge>
               <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: t.mailbox_color }}
-                title={t.mailbox_address}
-              />
-            )}
-            <span
-              className={`min-w-0 flex-1 truncate text-sm ${t.is_read ? "text-gray-700" : "font-semibold"}`}
-            >
-              {t.subject || "(no subject)"}
-            </span>
-            <span className="shrink-0 text-xs text-gray-400">
-              {formatTime(t.last_message_at)}
-            </span>
+                className="relative h-4 w-4 shrink-0"
+                role="status"
+                aria-live="polite"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`absolute inset-[1px] rounded-full border-2 border-muted-foreground/20 border-t-muted-foreground transition-opacity ${
+                    props.fetching && !props.loading ? "animate-spin opacity-100" : "opacity-0"
+                  }`}
+                />
+                <span className="sr-only">
+                  {props.fetching && !props.loading ? "Refreshing conversations" : ""}
+                </span>
+              </span>
+            </div>
           </div>
-          <div className="mt-0.5 truncate text-xs text-gray-500">{t.snippet}</div>
-        </button>
-      ))}
+
+          <div className="flex items-center gap-1.5 lg:hidden">
+            <Select
+              value={String(props.selectedMailbox ?? "all")}
+              onValueChange={(value) =>
+                props.onSelectMailbox(value === "all" ? null : Number(value))
+              }
+            >
+              <SelectTrigger size="sm" className="max-w-[130px] text-xs">
+                <SelectValue placeholder="All inboxes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All inboxes</SelectItem>
+                {props.mailboxes.map((mailbox) => (
+                  <SelectItem key={mailbox.id} value={String(mailbox.id)}>
+                    {mailbox.address}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={props.onOpenSettings}
+              aria-label="Open settings"
+            >
+              <SettingsIcon className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="relative">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            value={props.search}
+            onChange={(event) => props.onSearch(event.target.value)}
+            placeholder="Search conversations"
+            aria-label="Search conversations"
+            className="h-9 w-full bg-background pr-9 pl-9 text-[13px]"
+          />
+          {props.search ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => props.onSearch("")}
+              className="absolute top-1/2 right-1.5 -translate-y-1/2 text-muted-foreground"
+              aria-label="Clear search"
+            >
+              Esc
+            </Button>
+          ) : (
+            <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded border bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground sm:block">
+              /
+            </kbd>
+          )}
+        </div>
+
+        <Tabs
+          value={props.filter}
+          onValueChange={(value) => props.onFilter(value as ThreadFilter)}
+          className="mt-3 items-start gap-0"
+        >
+          <TabsList aria-label="Conversation filter">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="unread">Unread{unreadCount > 0 ? ` ${unreadCount}` : ""}</TabsTrigger>
+            <TabsTrigger value="drafts">Drafts{draftCount > 0 ? ` ${draftCount}` : ""}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {props.loading && <ThreadListSkeleton />}
+
+        {props.error && !props.loading && (
+          <ListState
+            icon={<InboxIcon className="h-5 w-5" />}
+            title="Couldn’t load conversations"
+            detail="Check your connection and try again."
+          />
+        )}
+
+        {!props.loading && !props.error && visibleThreads.length === 0 && (
+          <ListState
+            icon={props.filter === "drafts" ? <SparklesIcon className="h-5 w-5" /> : <InboxIcon className="h-5 w-5" />}
+            title={props.search ? "No matching conversations" : props.filter === "all" ? "Inbox zero" : `No ${props.filter} conversations`}
+            detail={props.search ? "Try a name, subject, or message text." : undefined}
+          />
+        )}
+
+        {visibleThreads.map((thread) => (
+          <ThreadRow
+            key={thread.id}
+            thread={thread}
+            selected={props.selected === thread.id}
+            showMailbox={props.showMailboxChip}
+            onClick={() => props.onSelect(thread.id)}
+          />
+        ))}
+      </div>
     </section>
   );
 }
 
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const sameDay = date.toDateString() === now.toDateString();
-  return sameDay
-    ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : date.toLocaleDateString([], { month: "short", day: "numeric" });
+function ThreadRow(props: {
+  thread: ThreadSummary;
+  selected: boolean;
+  showMailbox: boolean;
+  onClick: () => void;
+}) {
+  const { thread } = props;
+  const unread = !thread.is_read;
+  const sender = thread.last_from ?? thread.mailbox_address;
+
+  return (
+    <button
+      onClick={props.onClick}
+      className={`group flex w-full gap-3 border-b px-4 py-3.5 text-left transition-colors ${
+        props.selected ? "bg-muted/70" : "bg-background hover:bg-muted/40"
+      }`}
+    >
+      <span
+        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${avatarClass(sender)}`}
+      >
+        {initialOf(sender)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className={`min-w-0 flex-1 truncate text-[13px] ${unread ? "font-semibold text-slate-950" : "font-medium text-slate-700"}`}>
+            {sender}
+          </span>
+          <time className={`shrink-0 text-[10.5px] tabular-nums ${unread ? "font-medium text-slate-700" : "text-slate-400"}`}>
+            {formatTime(thread.last_message_at)}
+          </time>
+        </span>
+
+        <span className={`mt-0.5 block truncate text-[13px] ${unread ? "font-medium text-slate-800" : "text-slate-600"}`}>
+          {thread.subject || "(no subject)"}
+        </span>
+        <span className="mt-0.5 block truncate text-[11.5px] leading-relaxed text-slate-400">
+          {thread.snippet}
+        </span>
+
+        {(props.showMailbox || thread.pending_draft_count > 0) && (
+          <span className="mt-2 flex min-w-0 items-center gap-2">
+            {props.showMailbox && (
+              <Badge variant="secondary" className="h-5 min-w-0 px-1.5 text-[9.5px] font-normal">
+                <span className="truncate">{thread.mailbox_address}</span>
+              </Badge>
+            )}
+            {thread.pending_draft_count > 0 && (
+              <Badge variant="outline" className="h-5 shrink-0 gap-1 px-1.5 text-[9.5px] font-normal">
+                <SparklesIcon className="h-3 w-3" />
+                Draft
+              </Badge>
+            )}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function ListState(props: { icon: React.ReactNode; title: string; detail?: string }) {
+  return (
+    <div className="px-4 py-12 text-left">
+      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        {props.icon}
+      </span>
+      <p className="mt-3 text-[13px] font-medium text-slate-600">{props.title}</p>
+      {props.detail && (
+        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{props.detail}</p>
+      )}
+    </div>
+  );
+}
+
+function ThreadListSkeleton() {
+  return (
+    <div aria-label="Loading conversations">
+      {[0, 1, 2, 3].map((item) => (
+        <div key={item} className="flex animate-pulse gap-3 border-b border-slate-100 px-4 py-4">
+          <span className="h-8 w-8 shrink-0 rounded-full bg-slate-100" />
+          <span className="min-w-0 flex-1 space-y-2">
+            <span className="block h-3 w-2/5 rounded bg-slate-100" />
+            <span className="block h-3 w-4/5 rounded bg-slate-100" />
+            <span className="block h-2.5 w-full rounded bg-slate-50" />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }

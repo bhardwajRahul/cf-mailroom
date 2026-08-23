@@ -1,3 +1,6 @@
+// Local-dev-only config: no `ai` / `send_email` bindings, because both force a
+// remote proxy session (blocked by Cloudflare Access on this account) and
+// neither is needed for UI iteration. Deploys use wrangler.jsonc.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "agentic-inbox",
@@ -15,23 +18,10 @@
       "migrations_dir": "migrations"
     }
   ],
-  "ai": {
-    "binding": "AI"
-  },
-  "send_email": [
-    {
-      // Sender domains must be onboarded to Email Service (dashboard > Email Service).
-      "name": "EMAIL"
-    }
-  ],
   "r2_buckets": [
     {
       "binding": "RAW",
-      // Create with: wrangler r2 bucket create agentic-inbox-raw
       "bucket_name": "agentic-inbox-raw"
     }
-  ],
-  "observability": {
-    "enabled": true
-  }
+  ]
 }

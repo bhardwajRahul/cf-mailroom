@@ -4,6 +4,10 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
@@ -12,5 +16,5 @@
     "isolatedModules": true,
     "types": ["vite/client"]
   },
-  "include": ["src/web", "src/shared"]
+  "include": ["src/web", "src/shared", "src/components", "src/lib"]
 }
