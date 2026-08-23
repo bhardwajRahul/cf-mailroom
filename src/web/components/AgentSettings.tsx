@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -84,6 +85,8 @@ export function AgentSettings(props: {
   const [mailboxAddress, setMailboxAddress] = useState("");
   const [mailboxValidationError, setMailboxValidationError] = useState<string | null>(null);
   const [inboxSetup, setInboxSetup] = useState<InboxSetupState | null>(null);
+  const [routingConfirmed, setRoutingConfirmed] = useState(false);
+  const [sendingConfirmed, setSendingConfirmed] = useState(false);
 
   const selectedMailboxId = props.mailboxId;
   const mailbox = props.mailboxes.find((item) => item.id === selectedMailboxId) ?? null;
@@ -195,6 +198,8 @@ export function AgentSettings(props: {
     setMailboxAddress("");
     setMailboxValidationError(null);
     setInboxSetup(null);
+    setRoutingConfirmed(false);
+    setSendingConfirmed(false);
     setMailboxEditorOpen(true);
   };
 
@@ -213,8 +218,12 @@ export function AgentSettings(props: {
       addMailbox.mutate({ localPart: parsed.localPart, domainId: domain.id });
       return;
     }
+    setRoutingConfirmed(false);
+    setSendingConfirmed(false);
     setInboxSetup(parsed);
   };
+
+  const setupStepsRemaining = Number(!routingConfirmed) + Number(!sendingConfirmed);
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-muted/20">
@@ -377,6 +386,8 @@ export function AgentSettings(props: {
             configureAndAddMailbox.reset();
             setMailboxValidationError(null);
             setInboxSetup(null);
+            setRoutingConfirmed(false);
+            setSendingConfirmed(false);
           }
         }}
       >
@@ -384,7 +395,9 @@ export function AgentSettings(props: {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (inboxSetup) configureAndAddMailbox.mutate(inboxSetup);
+              if (inboxSetup) {
+                if (setupStepsRemaining === 0) configureAndAddMailbox.mutate(inboxSetup);
+              }
               else prepareInbox();
             }}
           >
@@ -440,26 +453,55 @@ export function AgentSettings(props: {
                     onClick={() => {
                       configureAndAddMailbox.reset();
                       setInboxSetup(null);
+                      setRoutingConfirmed(false);
+                      setSendingConfirmed(false);
                     }}
                   >
                     Edit
                   </Button>
                 </div>
 
-                <div className="divide-y">
-                  <div className="py-4">
-                    <p className="text-sm font-medium">Email Routing</p>
-                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                      Route incoming mail for {inboxSetup.domainName} to the agentic-inbox Worker.
-                    </p>
-                  </div>
-                  <div className="py-4">
-                    <p className="text-sm font-medium">Email Sending</p>
-                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                      Onboard {inboxSetup.domainName} in Cloudflare Email Sending.
-                    </p>
-                  </div>
-                </div>
+                <fieldset className="divide-y" aria-describedby="cloudflare-setup-note">
+                  <legend className="sr-only">Cloudflare setup checklist</legend>
+                  <label
+                    htmlFor="confirm-email-routing"
+                    className="flex cursor-pointer items-start gap-3 py-4"
+                  >
+                    <Checkbox
+                      id="confirm-email-routing"
+                      checked={routingConfirmed}
+                      onCheckedChange={(checked) => setRoutingConfirmed(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">Incoming mail is routed</span>
+                      <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+                        Email Routing sends mail for {inboxSetup.domainName} to the agentic-inbox Worker.
+                      </span>
+                    </span>
+                  </label>
+                  <label
+                    htmlFor="confirm-email-sending"
+                    className="flex cursor-pointer items-start gap-3 py-4"
+                  >
+                    <Checkbox
+                      id="confirm-email-sending"
+                      checked={sendingConfirmed}
+                      onCheckedChange={(checked) => setSendingConfirmed(checked === true)}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">Outbound sending is active</span>
+                      <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+                        {inboxSetup.domainName} is onboarded in Cloudflare Email Sending.
+                      </span>
+                    </span>
+                  </label>
+                </fieldset>
+
+                <p id="cloudflare-setup-note" className="text-xs leading-5 text-muted-foreground">
+                  Confirm each item only after completing it in Cloudflare.
+                </p>
 
                 {configureAndAddMailbox.isError && (
                   <p className="text-sm text-destructive" role="alert">
@@ -485,6 +527,7 @@ export function AgentSettings(props: {
                   domains.isLoading ||
                   domains.isError ||
                   (!inboxSetup && !mailboxAddress.trim()) ||
+                  (inboxSetup !== null && setupStepsRemaining > 0) ||
                   addMailbox.isPending ||
                   configureAndAddMailbox.isPending
                 }
@@ -492,7 +535,9 @@ export function AgentSettings(props: {
                 {addMailbox.isPending || configureAndAddMailbox.isPending
                   ? "Adding…"
                   : inboxSetup
-                    ? "I’ve configured Cloudflare"
+                    ? setupStepsRemaining > 0
+                      ? `${setupStepsRemaining} step${setupStepsRemaining === 1 ? "" : "s"} remaining`
+                      : "Add inbox"
                     : "Add inbox"}
               </Button>
             </DialogFooter>
