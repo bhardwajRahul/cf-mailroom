@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { formatTime, splitQuotedTail } from "../lib";
 import { EmailAvatar } from "./EmailAvatar";
+import { EmailHtmlBody } from "./EmailHtmlBody";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
@@ -372,9 +373,17 @@ function MessageCard({
         </time>
       </div>
 
-      <div className="break-words text-[13.5px] leading-6 whitespace-pre-wrap text-slate-800">
-        <LinkifiedText text={main} />
-      </div>
+      {message.html_body ? (
+        <EmailHtmlBody
+          html={message.html_body}
+          attachments={message.attachments}
+          sender={displayName}
+        />
+      ) : (
+        <div className="break-words text-[13.5px] leading-6 whitespace-pre-wrap text-slate-800">
+          <LinkifiedText text={main} />
+        </div>
+      )}
       {message.attachments.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2" aria-label="Attachments">
           {message.attachments.map((attachment) => (
@@ -391,7 +400,7 @@ function MessageCard({
           ))}
         </div>
       )}
-      {quoted && (
+      {!message.html_body && quoted && (
         <div className="mt-3">
           <Button
             variant="outline"
