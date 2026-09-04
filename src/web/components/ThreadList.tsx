@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { Mailbox, ThreadSummary } from "../../shared/types";
+import {
+  deriveAgentDraftStatus,
+  type AgentDraftStatus,
+} from "../../shared/agent-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -221,65 +225,118 @@ function ThreadRow(props: {
   const { thread } = props;
   const unread = !thread.is_read;
   const sender = thread.last_from ?? thread.mailbox_address;
+  const agentStatus = deriveAgentDraftStatus({
+    pendingDraftCount: thread.pending_draft_count,
+    runStatus: thread.draft_run_status,
+    agentMode: thread.mailbox_agent_mode,
+    latestInboundIsAutomated: Boolean(thread.latest_inbound_is_auto_submitted),
+    lastMessageDirection: thread.last_message_direction,
+  });
+  const showAgentStatus =
+    agentStatus !== "none" &&
+    (unread || ["processing", "draft_ready", "failed"].includes(agentStatus));
 
   return (
     <button
       onClick={props.onClick}
-      className={`group flex w-full gap-3 border-b px-4 py-3.5 text-left transition-colors ${
-        props.selected ? "bg-muted/70" : "bg-background hover:bg-muted/40"
+      className={`group relative flex w-full gap-3 border-b px-4 py-3.5 text-left transition-colors focus-visible:z-10 ${
+        props.selected
+          ? "bg-slate-100 hover:bg-slate-100"
+          : unread
+            ? "bg-slate-50/80 hover:bg-slate-100/80"
+            : "bg-background hover:bg-muted/40"
       }`}
     >
+      <span className="sr-only">{unread ? "Unread conversation. " : "Read conversation. "}</span>
       <span
-        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${avatarClass(sender)}`}
+        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold transition-opacity ${
+          unread ? "opacity-100" : "opacity-70"
+        } ${avatarClass(sender)}`}
       >
         {initialOf(sender)}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
-          <span className={`min-w-0 flex-1 truncate text-[13px] ${unread ? "font-semibold text-slate-950" : "font-medium text-slate-700"}`}>
-            {sender}
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            {unread && (
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-900"
+                title="Unread"
+              />
+            )}
+            <span
+              className={`min-w-0 flex-1 truncate text-[13px] ${
+                unread ? "font-semibold text-slate-950" : "font-normal text-slate-600"
+              }`}
+            >
+              {sender}
+            </span>
           </span>
-          <time className={`shrink-0 text-[10.5px] tabular-nums ${unread ? "font-medium text-slate-700" : "text-slate-400"}`}>
+          <time
+            className={`shrink-0 text-[10.5px] tabular-nums ${
+              unread ? "font-semibold text-slate-800" : "font-normal text-slate-400"
+            }`}
+          >
             {formatTime(thread.last_message_at)}
           </time>
         </span>
 
-        <span className={`mt-0.5 block truncate text-[13px] ${unread ? "font-medium text-slate-800" : "text-slate-600"}`}>
+        <span
+          className={`mt-0.5 block truncate text-[13px] ${
+            unread ? "font-semibold text-slate-900" : "font-normal text-slate-600"
+          }`}
+        >
           {thread.subject || "(no subject)"}
         </span>
-        <span className="mt-0.5 block truncate text-[11.5px] leading-relaxed text-slate-400">
+        <span
+          className={`mt-0.5 block truncate text-[11.5px] leading-relaxed ${
+            unread ? "font-medium text-slate-600" : "font-normal text-slate-400"
+          }`}
+        >
           {thread.snippet}
         </span>
 
-        {(props.showMailbox || thread.pending_draft_count > 0 || thread.draft_run_status === "failed" || thread.draft_run_status === "queued" || thread.draft_run_status === "generating") && (
+        {(props.showMailbox || showAgentStatus) && (
           <span className="mt-2 flex min-w-0 items-center gap-2">
             {props.showMailbox && (
               <Badge variant="secondary" className="h-5 min-w-0 px-1.5 text-[9.5px] font-normal">
                 <span className="truncate">{thread.mailbox_address}</span>
               </Badge>
             )}
-            {thread.pending_draft_count > 0 && (
-              <Badge variant="outline" className="h-5 shrink-0 gap-1 px-1.5 text-[9.5px] font-normal">
-                <SparklesIcon className="h-3 w-3" />
-                Draft
-              </Badge>
-            )}
-            {thread.pending_draft_count === 0 &&
-              (thread.draft_run_status === "queued" || thread.draft_run_status === "generating") && (
-                <Badge variant="outline" className="h-5 shrink-0 gap-1 px-1.5 text-[9.5px] font-normal">
-                  <SparklesIcon className="h-3 w-3 animate-pulse" />
-                  Drafting
-                </Badge>
-              )}
-            {thread.draft_run_status === "failed" && (
-              <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[9.5px] font-normal text-red-700">
-                Draft failed
-              </Badge>
-            )}
+            {showAgentStatus && <AgentStatusBadge status={agentStatus} />}
           </span>
         )}
       </span>
     </button>
+  );
+}
+
+function AgentStatusBadge({ status }: { status: AgentDraftStatus }) {
+  const labels: Partial<Record<AgentDraftStatus, string>> = {
+    processing: "AI processing",
+    draft_ready: "Draft ready",
+    failed: "AI failed",
+    skipped: "AI skipped",
+    off: "AI off",
+    not_processed: "Not processed",
+    processed: "AI processed",
+  };
+  const label = labels[status];
+  if (!label) return null;
+
+  return (
+    <Badge
+      variant="outline"
+      className={`h-5 shrink-0 gap-1 px-1.5 text-[9.5px] font-normal ${
+        status === "failed" ? "border-red-200 text-red-700" : "text-muted-foreground"
+      }`}
+    >
+      {(status === "processing" || status === "draft_ready") && (
+        <SparklesIcon className={`h-3 w-3 ${status === "processing" ? "animate-pulse" : ""}`} />
+      )}
+      {label}
+    </Badge>
   );
 }
 

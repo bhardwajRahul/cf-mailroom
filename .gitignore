@@ -1,6 +1,9 @@
 node_modules/
+.npm-cache/
 dist/
 .wrangler/
+.wrangler-mcp-build/
 .dev.vars
 .DS_Store
 *.log
+tsconfig.mcp.tsbuildinfo

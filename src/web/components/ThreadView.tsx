@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router";
 import {
   archiveThread,
+  createDraft,
   discardDraft,
   fetchThread,
   markRead,
@@ -9,6 +11,10 @@ import {
   sendReply,
 } from "../api";
 import type { Draft, DraftRun, Message } from "../../shared/types";
+import {
+  deriveAgentDraftStatus,
+  type AgentDraftStatus,
+} from "../../shared/agent-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -22,6 +28,7 @@ import {
   SendIcon,
   SparklesIcon,
 } from "./Icons";
+import { LinkifiedText } from "./LinkifiedText";
 
 export function ThreadView(props: {
   threadId: number;
@@ -103,6 +110,11 @@ export function ThreadView(props: {
     onSuccess: invalidateAll,
   });
 
+  const startDraft = useMutation({
+    mutationFn: () => createDraft(props.threadId),
+    onSuccess: invalidateAll,
+  });
+
   if (detail.isLoading) return <ThreadViewSkeleton onBack={props.onBack} />;
 
   if (detail.isError || !detail.data) {
@@ -130,6 +142,16 @@ export function ThreadView(props: {
   }
 
   const { thread, messages, drafts } = detail.data;
+  const agentStatus = deriveAgentDraftStatus({
+    pendingDraftCount: drafts.length,
+    runStatus: detail.data.draft_run?.status ?? null,
+    agentMode: thread.mailbox_agent_mode,
+    latestInboundIsAutomated: Boolean(thread.latest_inbound_is_auto_submitted),
+    lastMessageDirection: thread.last_message_direction,
+  });
+  const latestInboundMessageId = [...messages]
+    .reverse()
+    .find((message) => message.direction === "inbound")?.id;
 
   const attemptFor = (key: string, text: string) => {
     const existing = attemptIds.current.get(key);
@@ -186,15 +208,30 @@ export function ThreadView(props: {
       <div ref={conversationRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mr-auto w-full max-w-[800px] space-y-4 px-4 py-5 sm:px-6 md:py-6">
           {messages.map((message) => (
-            <MessageCard key={message.id} message={message} />
-          ))}
-          {drafts.length === 0 && detail.data.draft_run && (
-            <DraftRunState
-              run={detail.data.draft_run}
-              retrying={retryDraft.isPending}
-              onRetry={() => retryDraft.mutate(detail.data.draft_run!.id)}
+            <MessageCard
+              key={message.id}
+              message={message}
+              agentState={
+                drafts.length === 0 && message.id === latestInboundMessageId
+                  ? {
+                      status: agentStatus,
+                      run: detail.data.draft_run,
+                      settingsHref: `/settings/inboxes/${thread.mailbox_id}`,
+                      retrying: retryDraft.isPending,
+                      starting: startDraft.isPending,
+                      startError:
+                        startDraft.isError && startDraft.error instanceof Error
+                          ? startDraft.error.message
+                          : null,
+                      onRetry: () => {
+                        if (detail.data.draft_run) retryDraft.mutate(detail.data.draft_run.id);
+                      },
+                      onStart: () => startDraft.mutate(),
+                    }
+                  : null
+              }
             />
-          )}
+          ))}
           {drafts.map((draft) => (
             <DraftCard
               key={draft.id}
@@ -280,7 +317,24 @@ export function ThreadView(props: {
   );
 }
 
-function MessageCard({ message }: { message: Message }) {
+interface MessageAgentStateProps {
+  status: AgentDraftStatus;
+  run: DraftRun | null;
+  settingsHref: string;
+  retrying: boolean;
+  starting: boolean;
+  startError: string | null;
+  onRetry: () => void;
+  onStart: () => void;
+}
+
+function MessageCard({
+  message,
+  agentState,
+}: {
+  message: Message;
+  agentState: MessageAgentStateProps | null;
+}) {
   const [showQuoted, setShowQuoted] = useState(false);
   const isOutbound = message.direction === "outbound";
   const displayName = isOutbound
@@ -316,7 +370,9 @@ function MessageCard({ message }: { message: Message }) {
         </time>
       </div>
 
-      <div className="text-[13.5px] leading-6 whitespace-pre-wrap text-slate-800">{main}</div>
+      <div className="break-words text-[13.5px] leading-6 whitespace-pre-wrap text-slate-800">
+        <LinkifiedText text={main} />
+      </div>
       {message.attachments.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2" aria-label="Attachments">
           {message.attachments.map((attachment) => (
@@ -343,42 +399,79 @@ function MessageCard({ message }: { message: Message }) {
             {showQuoted ? "Hide quoted text" : "Show quoted text"}
           </Button>
           {showQuoted && (
-            <div className="mt-3 border-l-2 border-slate-200 pl-3 text-[12px] leading-relaxed whitespace-pre-wrap text-slate-400">
-              {quoted}
+            <div className="mt-3 break-words border-l-2 border-slate-200 pl-3 text-[12px] leading-relaxed whitespace-pre-wrap text-slate-400">
+              <LinkifiedText text={quoted} />
             </div>
           )}
         </div>
       )}
+      {agentState && <MessageAgentState {...agentState} />}
     </Card>
   );
 }
 
-function DraftRunState(props: {
-  run: DraftRun;
-  retrying: boolean;
-  onRetry: () => void;
-}) {
-  if (props.run.status === "ready" || props.run.status === "superseded") return null;
-  const working = props.run.status === "queued" || props.run.status === "generating";
+function MessageAgentState(props: MessageAgentStateProps) {
+  if (props.status === "none" || props.status === "draft_ready") return null;
+
+  const content: Partial<Record<AgentDraftStatus, { title: string; detail: string }>> = {
+    processing: {
+      title: "AI is preparing a draft",
+      detail: "This conversation updates automatically when the draft is ready.",
+    },
+    failed: {
+      title: "AI couldn’t create a draft",
+      detail: props.run?.error || "The model did not return a draft.",
+    },
+    skipped: {
+      title: "AI skipped this message",
+      detail:
+        props.run?.error ||
+        "Automated messages and messages replaced by a newer reply are not drafted.",
+    },
+    off: {
+      title: "AI drafting is off",
+      detail: "Turn it on for this inbox in Settings to draft future replies.",
+    },
+    not_processed: {
+      title: "Not processed by AI",
+      detail: props.startError || "AI never started on this message.",
+    },
+    processed: {
+      title: "AI processing is complete",
+      detail: "There is no draft awaiting review.",
+    },
+  };
+  const state = content[props.status];
+  if (!state) return null;
+  const working = props.status === "processing";
+  const failed = props.status === "failed";
 
   return (
-    <div className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3.5">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-muted/30 text-muted-foreground">
-        <SparklesIcon className={`h-4 w-4 ${working ? "animate-pulse" : ""}`} />
+    <div
+      className={`-mx-4 -mb-4 mt-4 flex items-start gap-2.5 border-t px-4 py-3 sm:-mx-5 sm:-mb-5 sm:items-center sm:px-5 ${
+        failed ? "border-red-100 bg-red-50/60" : "bg-muted/30"
+      }`}
+    >
+      <span className={`mt-0.5 shrink-0 ${failed ? "text-red-700" : "text-muted-foreground"}`}>
+        <SparklesIcon className={`h-3.5 w-3.5 ${working ? "animate-pulse" : ""}`} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-foreground">
-          {working ? "Preparing a draft…" : "Draft generation failed"}
-        </p>
-        {!working && (
-          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-            {props.run.error || "The model did not return a draft."}
-          </p>
-        )}
+        <p className="text-[11.5px] font-medium text-foreground">{state.title}</p>
+        <p className="mt-0.5 text-[10.5px] leading-relaxed text-muted-foreground">{state.detail}</p>
       </div>
-      {!working && (
-        <Button variant="outline" size="sm" onClick={props.onRetry} disabled={props.retrying}>
+      {failed && props.run && (
+        <Button variant="outline" size="xs" onClick={props.onRetry} disabled={props.retrying}>
           {props.retrying ? "Retrying…" : "Try again"}
+        </Button>
+      )}
+      {props.status === "off" && (
+        <Button asChild variant="outline" size="xs">
+          <Link to={props.settingsHref}>Open settings</Link>
+        </Button>
+      )}
+      {props.status === "not_processed" && (
+        <Button variant="outline" size="xs" onClick={props.onStart} disabled={props.starting}>
+          {props.starting ? "Creating…" : "Create draft"}
         </Button>
       )}
     </div>

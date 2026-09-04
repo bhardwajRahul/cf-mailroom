@@ -1,5 +1,7 @@
 import type {
+  BrowserPushSubscription,
   Domain,
+  GeneralSettings,
   Mailbox,
   Playbook,
   PlaybookInput,
@@ -24,6 +26,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const fetchMailboxes = () => request<Mailbox[]>("/mailboxes");
+
+export const fetchGeneralSettings = () =>
+  request<GeneralSettings>("/settings/general");
+
+export const enableBrowserNotifications = (subscription: BrowserPushSubscription) =>
+  request<{ ok: true }>("/settings/browser-notifications", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(subscription),
+  });
+
+export const disableBrowserNotifications = () =>
+  request<{ ok: true }>("/settings/browser-notifications", { method: "DELETE" });
 
 export const fetchDomains = () => request<Domain[]>("/domains");
 
@@ -52,6 +67,13 @@ export const updateMailbox = (
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+
+export const deleteMailbox = (id: number, confirmAddress: string) =>
+  request<{ ok: true; deleted_id: number; domain_id: number | null }>(`/mailboxes/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm_address: confirmAddress }),
   });
 
 export const fetchPlaybooks = (mailboxId: number) =>
@@ -100,3 +122,6 @@ export const discardDraft = (id: number) => request(`/drafts/${id}/discard`, { m
 
 export const retryDraftRun = (id: number) =>
   request<{ ok: true }>(`/draft-runs/${id}/retry`, { method: "POST" });
+
+export const createDraft = (threadId: number) =>
+  request<{ ok: true; run_id: number }>(`/threads/${threadId}/draft`, { method: "POST" });

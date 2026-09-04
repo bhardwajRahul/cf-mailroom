@@ -15,4 +15,7 @@ interface Env {
   EMAIL: OutboundEmailBinding;
   AI: Ai;
   DRAFT_QUEUE: Queue<{ runId: number }>;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_JWK?: string;
+  VAPID_SUBJECT?: string;
 }

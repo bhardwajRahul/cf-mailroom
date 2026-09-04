@@ -16,6 +16,22 @@ export interface Domain {
   activated_at: string | null;
 }
 
+export interface GeneralSettings {
+  browser_notifications_enabled: boolean;
+  browser_notifications_configured: boolean;
+  push_subscription_count: number;
+  vapid_public_key: string | null;
+}
+
+export interface BrowserPushSubscription {
+  endpoint: string;
+  expirationTime: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
 export interface Playbook {
   id: number;
   mailbox_id: number;
@@ -42,6 +58,7 @@ export interface ThreadSummary {
   mailbox_id: number;
   mailbox_address: string;
   mailbox_color: string;
+  mailbox_agent_mode: Mailbox["agent_mode"];
   subject: string;
   snippet: string;
   status: "open" | "archived" | "needs_human";
@@ -49,6 +66,9 @@ export interface ThreadSummary {
   message_count: number;
   pending_draft_count: number;
   draft_run_status: DraftRunStatus | null;
+  draft_run_error: string | null;
+  latest_inbound_is_auto_submitted: number;
+  last_message_direction: "inbound" | "outbound";
   last_message_at: string;
   last_from: string | null;
 }

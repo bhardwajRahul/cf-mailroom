@@ -1,9 +1,96 @@
 import { Hono } from "hono";
 import { enqueueDraftRun } from "../agent/runs";
 import { ReplyIntentError, sendReplyAttempt } from "../email/reply";
-import type { Attachment, Domain, DraftRun, Mailbox, Message, PlaybookInput } from "../../shared/types";
+import {
+  deleteInbox,
+  InboxDeletionError,
+  purgeInboxObjects,
+} from "../inbox/delete";
+import { validatePushSubscription } from "../notifications/push";
+import type {
+  Attachment,
+  BrowserPushSubscription,
+  Domain,
+  DraftRun,
+  GeneralSettings,
+  Mailbox,
+  Message,
+  PlaybookInput,
+} from "../../shared/types";
 
 export const api = new Hono<{ Bindings: Env }>();
+
+api.get("/settings/general", async (c) => {
+  const [settings, subscriptions] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT browser_notifications_enabled FROM global_settings WHERE id = 1",
+    ).first<{ browser_notifications_enabled: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM push_subscriptions")
+      .first<{ count: number }>(),
+  ]);
+  const configured = Boolean(
+    c.env.VAPID_PUBLIC_KEY && c.env.VAPID_PRIVATE_JWK && c.env.VAPID_SUBJECT,
+  );
+  const result: GeneralSettings = {
+    browser_notifications_enabled: Boolean(settings?.browser_notifications_enabled),
+    browser_notifications_configured: configured,
+    push_subscription_count: Number(subscriptions?.count ?? 0),
+    vapid_public_key: configured ? c.env.VAPID_PUBLIC_KEY! : null,
+  };
+  return c.json(result);
+});
+
+api.post("/settings/browser-notifications", async (c) => {
+  if (!c.env.VAPID_PUBLIC_KEY || !c.env.VAPID_PRIVATE_JWK || !c.env.VAPID_SUBJECT) {
+    return c.json({ error: "Browser notifications are not configured on this server" }, 503);
+  }
+
+  const subscription = await c.req.json<BrowserPushSubscription>();
+  if (!validatePushSubscription(subscription)) {
+    return c.json({ error: "The browser returned an invalid Push Subscription" }, 400);
+  }
+
+  const userAgent = c.req.header("User-Agent")?.slice(0, 512) ?? null;
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO push_subscriptions
+         (endpoint, expiration_time, p256dh, auth, user_agent)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET
+         expiration_time = excluded.expiration_time,
+         p256dh = excluded.p256dh,
+         auth = excluded.auth,
+         user_agent = excluded.user_agent,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+    ).bind(
+      subscription.endpoint,
+      subscription.expirationTime ?? null,
+      subscription.keys.p256dh,
+      subscription.keys.auth,
+      userAgent,
+    ),
+    c.env.DB.prepare(
+      `UPDATE global_settings
+       SET browser_notifications_enabled = 1,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       WHERE id = 1`,
+    ),
+  ]);
+  return c.json({ ok: true });
+});
+
+api.delete("/settings/browser-notifications", async (c) => {
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE global_settings
+       SET browser_notifications_enabled = 0,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       WHERE id = 1`,
+    ),
+    c.env.DB.prepare("DELETE FROM push_subscriptions"),
+  ]);
+  return c.json({ ok: true });
+});
 
 api.get("/mailboxes", async (c) => {
   const { results } = await c.env.DB.prepare(
@@ -136,6 +223,41 @@ api.patch("/mailboxes/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+api.delete("/mailboxes/:id", async (c) => {
+  const id = parsePositiveId(c.req.param("id"));
+  if (id === null) return c.json({ error: "Invalid inbox" }, 400);
+
+  const body = await c.req.json<{ confirm_address?: unknown }>().catch(() => null);
+  if (!body || typeof body.confirm_address !== "string") {
+    return c.json({ error: "Type the inbox address to confirm deletion" }, 400);
+  }
+
+  try {
+    const deleted = await deleteInbox(c.env, {
+      id,
+      confirmAddress: body.confirm_address,
+    });
+    c.executionCtx.waitUntil(
+      purgeInboxObjects(c.env.RAW, deleted.id).catch((error) => {
+        console.error("Inbox object cleanup failed", {
+          inboxId: deleted.id,
+          error,
+        });
+      }),
+    );
+    return c.json({
+      ok: true,
+      deleted_id: deleted.id,
+      domain_id: deleted.domainId,
+    });
+  } catch (error) {
+    if (error instanceof InboxDeletionError) {
+      return c.json({ error: error.message }, error.status);
+    }
+    throw error;
+  }
+});
+
 api.get("/playbooks", async (c) => {
   const mailboxId = Number(c.req.query("mailbox_id"));
   if (!Number.isInteger(mailboxId) || mailboxId <= 0) {
@@ -223,14 +345,37 @@ api.get("/threads", async (c) => {
   if (mailboxId) conditions.push("t.mailbox_id = ?1");
   const { results } = await c.env.DB.prepare(
     `SELECT t.*, m.address AS mailbox_address, m.color AS mailbox_color,
-       (SELECT COALESCE(msg.from_name, msg.from_address) FROM messages msg
-        WHERE msg.thread_id = t.id AND msg.direction = 'inbound'
-        ORDER BY msg.created_at DESC LIMIT 1) AS last_from,
+       m.agent_mode AS mailbox_agent_mode,
+       COALESCE(
+         latest_inbound.from_name,
+         latest_inbound.from_address,
+         CASE WHEN latest_message.direction = 'outbound'
+           THEN 'To: ' || COALESCE(json_extract(latest_message.to_addresses, '$[0]'), '')
+         END
+       ) AS last_from,
        (SELECT COUNT(*) FROM drafts d
-        WHERE d.thread_id = t.id AND d.status = 'pending') AS pending_draft_count
-      ,(SELECT dr.status FROM draft_runs dr
-        WHERE dr.thread_id = t.id ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1) AS draft_run_status
-     FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id
+        WHERE d.thread_id = t.id AND d.status = 'pending'
+          AND d.source_inbound_message_id = latest_inbound.id) AS pending_draft_count,
+       latest_run.status AS draft_run_status,
+       latest_run.error AS draft_run_error,
+       COALESCE(latest_inbound.is_auto_submitted, 0) AS latest_inbound_is_auto_submitted,
+       latest_message.direction AS last_message_direction
+     FROM threads t
+     JOIN mailboxes m ON m.id = t.mailbox_id
+     LEFT JOIN messages latest_message ON latest_message.id = (
+       SELECT lm.id FROM messages lm WHERE lm.thread_id = t.id
+       ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1
+     )
+     LEFT JOIN messages latest_inbound ON latest_inbound.id = (
+       SELECT li.id FROM messages li
+       WHERE li.thread_id = t.id AND li.direction = 'inbound'
+       ORDER BY li.created_at DESC, li.id DESC LIMIT 1
+     )
+     LEFT JOIN draft_runs latest_run ON latest_run.id = (
+       SELECT dr.id FROM draft_runs dr
+       WHERE dr.inbound_message_id = latest_inbound.id
+       ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1
+     )
      WHERE ${conditions.join(" AND ")}
      ORDER BY t.last_message_at DESC LIMIT 100`,
   )
@@ -242,8 +387,39 @@ api.get("/threads", async (c) => {
 api.get("/threads/:id", async (c) => {
   const id = c.req.param("id");
   const thread = await c.env.DB.prepare(
-    `SELECT t.*, m.address AS mailbox_address, m.color AS mailbox_color
-     FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id WHERE t.id = ?`,
+    `SELECT t.*, m.address AS mailbox_address, m.color AS mailbox_color,
+       m.agent_mode AS mailbox_agent_mode,
+       COALESCE(
+         latest_inbound.from_name,
+         latest_inbound.from_address,
+         CASE WHEN latest_message.direction = 'outbound'
+           THEN 'To: ' || COALESCE(json_extract(latest_message.to_addresses, '$[0]'), '')
+         END
+       ) AS last_from,
+       (SELECT COUNT(*) FROM drafts d
+        WHERE d.thread_id = t.id AND d.status = 'pending'
+          AND d.source_inbound_message_id = latest_inbound.id) AS pending_draft_count,
+       latest_run.status AS draft_run_status,
+       latest_run.error AS draft_run_error,
+       COALESCE(latest_inbound.is_auto_submitted, 0) AS latest_inbound_is_auto_submitted,
+       latest_message.direction AS last_message_direction
+     FROM threads t
+     JOIN mailboxes m ON m.id = t.mailbox_id
+     LEFT JOIN messages latest_message ON latest_message.id = (
+       SELECT lm.id FROM messages lm WHERE lm.thread_id = t.id
+       ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1
+     )
+     LEFT JOIN messages latest_inbound ON latest_inbound.id = (
+       SELECT li.id FROM messages li
+       WHERE li.thread_id = t.id AND li.direction = 'inbound'
+       ORDER BY li.created_at DESC, li.id DESC LIMIT 1
+     )
+     LEFT JOIN draft_runs latest_run ON latest_run.id = (
+       SELECT dr.id FROM draft_runs dr
+       WHERE dr.inbound_message_id = latest_inbound.id
+       ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1
+     )
+     WHERE t.id = ?`,
   )
     .bind(id)
     .first();
@@ -255,13 +431,23 @@ api.get("/threads/:id", async (c) => {
       `SELECT d.*, p.name AS playbook_name
        FROM drafts d LEFT JOIN playbooks p ON p.id = d.playbook_id
        WHERE d.thread_id = ? AND d.status = 'pending'
+         AND d.source_inbound_message_id = (
+           SELECT id FROM messages
+           WHERE thread_id = ? AND direction = 'inbound'
+           ORDER BY created_at DESC, id DESC LIMIT 1
+         )
        ORDER BY d.created_at`,
     )
-      .bind(id)
+      .bind(id, id)
       .all(),
     c.env.DB.prepare(
       `SELECT * FROM draft_runs
-       WHERE thread_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
+       WHERE inbound_message_id = (
+         SELECT id FROM messages
+         WHERE thread_id = ? AND direction = 'inbound'
+         ORDER BY created_at DESC, id DESC LIMIT 1
+       )
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
     )
       .bind(id)
       .first<DraftRun>(),
@@ -338,6 +524,40 @@ api.post("/draft-runs/:id/retry", async (c) => {
   return c.json({ ok: true });
 });
 
+api.post("/threads/:id/draft", async (c) => {
+  const threadId = parsePositiveId(c.req.param("id"));
+  if (threadId === null) return c.json({ error: "Invalid conversation" }, 400);
+
+  const thread = await c.env.DB.prepare(
+    `SELECT t.id, m.agent_mode
+     FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id
+     WHERE t.id = ?`,
+  )
+    .bind(threadId)
+    .first<{ id: number; agent_mode: Mailbox["agent_mode"] }>();
+  if (!thread) return c.json({ error: "Conversation not found" }, 404);
+  if (thread.agent_mode === "off") {
+    return c.json({ error: "Turn on AI drafting for this inbox first" }, 409);
+  }
+
+  const latestMessage = await c.env.DB.prepare(
+    `SELECT id, direction, is_auto_submitted
+     FROM messages WHERE thread_id = ?
+     ORDER BY created_at DESC, id DESC LIMIT 1`,
+  )
+    .bind(threadId)
+    .first<{ id: number; direction: "inbound" | "outbound"; is_auto_submitted: number }>();
+  if (!latestMessage || latestMessage.direction !== "inbound") {
+    return c.json({ error: "The latest message does not need an AI draft" }, 409);
+  }
+  if (latestMessage.is_auto_submitted) {
+    return c.json({ error: "Automated messages are not drafted" }, 409);
+  }
+
+  const runId = await enqueueDraftRun(c.env, threadId, latestMessage.id);
+  return c.json({ ok: true, run_id: runId }, 202);
+});
+
 api.post("/threads/:id/read", async (c) => {
   await c.env.DB.prepare("UPDATE threads SET is_read = 1 WHERE id = ?").bind(c.req.param("id")).run();
   return c.json({ ok: true });
@@ -400,17 +620,39 @@ api.get("/search", async (c) => {
   if (!q) return c.json([]);
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT t.*, m.address AS mailbox_address, m.color AS mailbox_color,
-       (SELECT COALESCE(msg.from_name, msg.from_address) FROM messages msg
-        WHERE msg.thread_id = t.id AND msg.direction = 'inbound'
-        ORDER BY msg.created_at DESC LIMIT 1) AS last_from,
+       m.agent_mode AS mailbox_agent_mode,
+       COALESCE(
+         latest_inbound.from_name,
+         latest_inbound.from_address,
+         CASE WHEN latest_message.direction = 'outbound'
+           THEN 'To: ' || COALESCE(json_extract(latest_message.to_addresses, '$[0]'), '')
+         END
+       ) AS last_from,
        (SELECT COUNT(*) FROM drafts d
-        WHERE d.thread_id = t.id AND d.status = 'pending') AS pending_draft_count
-      ,(SELECT dr.status FROM draft_runs dr
-        WHERE dr.thread_id = t.id ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1) AS draft_run_status
+        WHERE d.thread_id = t.id AND d.status = 'pending'
+          AND d.source_inbound_message_id = latest_inbound.id) AS pending_draft_count,
+       latest_run.status AS draft_run_status,
+       latest_run.error AS draft_run_error,
+       COALESCE(latest_inbound.is_auto_submitted, 0) AS latest_inbound_is_auto_submitted,
+       latest_message.direction AS last_message_direction
      FROM messages_fts f
      JOIN messages msg ON msg.id = f.rowid
      JOIN threads t ON t.id = msg.thread_id
      JOIN mailboxes m ON m.id = t.mailbox_id
+     LEFT JOIN messages latest_message ON latest_message.id = (
+       SELECT lm.id FROM messages lm WHERE lm.thread_id = t.id
+       ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1
+     )
+     LEFT JOIN messages latest_inbound ON latest_inbound.id = (
+       SELECT li.id FROM messages li
+       WHERE li.thread_id = t.id AND li.direction = 'inbound'
+       ORDER BY li.created_at DESC, li.id DESC LIMIT 1
+     )
+     LEFT JOIN draft_runs latest_run ON latest_run.id = (
+       SELECT dr.id FROM draft_runs dr
+       WHERE dr.inbound_message_id = latest_inbound.id
+       ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1
+     )
      WHERE messages_fts MATCH ?1
        AND (?2 = 0 OR t.mailbox_id = ?2)
      ORDER BY t.last_message_at DESC LIMIT 50`,

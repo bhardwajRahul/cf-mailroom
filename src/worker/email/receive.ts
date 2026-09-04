@@ -1,6 +1,7 @@
 import PostalMime, { type Attachment, type Email } from "postal-mime";
 import { enqueueDraftRun } from "../agent/runs";
 import { splitQuotedTail } from "../../shared/quote";
+import { notifyNewEmail } from "../notifications/push";
 import {
   addressOf,
   addressesOf,
@@ -14,7 +15,7 @@ import {
 export async function receiveEmail(
   message: ForwardableEmailMessage,
   env: Env,
-  _ctx: ExecutionContext,
+  ctx: ExecutionContext,
 ): Promise<void> {
   const mailbox = await findMailbox(env, message.to.trim().toLowerCase());
   if (!mailbox) {
@@ -82,6 +83,15 @@ export async function receiveEmail(
       });
 
   await storeAttachments(env, mailbox.id, stored.messageId, parsed.attachments);
+
+  ctx.waitUntil(
+    notifyNewEmail(env, {
+      threadId: stored.threadId,
+      senderName: parsed.from && "name" in parsed.from ? parsed.from.name : null,
+      senderAddress: sender || "unknown",
+      subject,
+    }).catch((error) => console.error("Browser notification task failed", error)),
+  );
 
   if (mailbox.agent_mode !== "off" && !isAutoSubmitted(parsed)) {
     await enqueueIfExternal(env, stored.threadId, stored.messageId, parsed);

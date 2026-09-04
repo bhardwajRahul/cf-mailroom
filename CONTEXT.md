@@ -29,12 +29,32 @@ A proposed reply authored by the agent and held for human review before sending.
 _Avoid_: Auto-reply, suggestion
 
 **Draft Run**:
-One retryable attempt to produce an Agent Draft for a specific latest inbound Message. A Conversation may have many Draft Runs over time, but only the newest relevant result may become pending.
+One retryable attempt to produce an Agent Draft for a specific latest inbound Message. It ends with an Agent Draft, a failure, or an explicit skip; it never ends as an unlabelled absence.
 _Avoid_: Agent job, generation task
+
+**Unprocessed Message**:
+An inbound Message for which no Draft Run exists. It is distinct from a skipped Draft Run because the agent never considered it.
+_Avoid_: Empty result, no draft
 
 **Reply Attempt**:
 A durable human-approved intent to send one reply. Retrying the same Reply Attempt must never create another outbound Message.
 _Avoid_: Send request, outbox item
+
+**Send Attempt**:
+A durable intent to send one new outbound Message from a registered Inbox. It owns idempotency, provider delivery, Conversation creation, and the outbound Message record. A retry of one Send Attempt must never create another email.
+_Avoid_: API send, raw Cloudflare send
+
+**MCP Server**:
+The independently deployed, OAuth-protected adapter through which external agents read Conversations and send email. It shares the Inbox domain modules and D1 database with the Web Worker but does not proxy or expose the Web API.
+_Avoid_: MCP API, agent endpoint
+
+**Access Identity**:
+The instance owner identity verified from the Cloudflare Access assertion and owner allowlist when an MCP client opens `/authorize`. Access protects only interactive consent; OAuth discovery, registration, tokens, and the MCP resource remain publicly reachable. The owner subject is encrypted into the resulting grant and recorded on MCP-originated Reply and Send Attempts, while bearer tokens are never logged.
+_Avoid_: MCP user, API key owner
+
+**MCP Authorization Grant**:
+The owner's explicit approval for one registered MCP client and its requested `inbox.read` / `inbox.send` scopes. The OAuth provider owns PKCE, short-lived access tokens, rotating refresh tokens, audience binding, narrowing, and revocation; tool availability follows the effective token scope.
+_Avoid_: Access session, API key, global MCP permission
 
 **Attachment**:
 A file or inline resource carried by one Message and available to people for inspection or download.
@@ -43,3 +63,7 @@ _Avoid_: Upload, raw MIME
 **Conversation**:
 The ordered email exchange grouped under one customer request.
 _Avoid_: Ticket, chat
+
+**Browser Notifications**:
+A workspace-wide opt-in that sends a new-email notification to every subscribed browser, across all Inboxes. Each browser maintains its own Push Subscription; turning the global setting off disables delivery and clears all stored subscriptions.
+_Avoid_: Inbox notifications, notification channel

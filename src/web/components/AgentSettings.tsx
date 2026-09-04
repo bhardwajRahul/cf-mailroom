@@ -13,6 +13,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -33,6 +34,7 @@ import {
   createDomain,
   createMailbox,
   createPlaybook,
+  deleteMailbox,
   deletePlaybook,
   fetchDomains,
   fetchPlaybooks,
@@ -48,6 +50,7 @@ import {
   SparklesIcon,
   TrashIcon,
 } from "./Icons";
+import { SettingsNavigation } from "./SettingsNavigation";
 
 interface PlaybookEditorState {
   id?: number;
@@ -81,6 +84,8 @@ export function AgentSettings(props: {
   mailboxes: Mailbox[];
   mailboxId: number | null;
   onSelectMailbox: (id: number) => void;
+  onMailboxDeleted: (nextMailboxId: number | null) => void;
+  onOpenGeneral: () => void;
   onBack: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -93,6 +98,8 @@ export function AgentSettings(props: {
   const [inboxSetup, setInboxSetup] = useState<InboxSetupState | null>(null);
   const [routingConfirmed, setRoutingConfirmed] = useState(false);
   const [sendingConfirmed, setSendingConfirmed] = useState(false);
+  const [deleteInboxOpen, setDeleteInboxOpen] = useState(false);
+  const [deleteInboxConfirmation, setDeleteInboxConfirmation] = useState("");
 
   const selectedMailboxId = props.mailboxId;
   const mailbox = props.mailboxes.find((item) => item.id === selectedMailboxId) ?? null;
@@ -100,6 +107,8 @@ export function AgentSettings(props: {
   useEffect(() => {
     setBaseInstructions(mailbox?.agent_instructions ?? "");
     setDeleteConfirmation(null);
+    setDeleteInboxOpen(false);
+    setDeleteInboxConfirmation("");
   }, [mailbox]);
 
   const playbooks = useQuery({
@@ -148,6 +157,17 @@ export function AgentSettings(props: {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mailboxes"] }),
   });
 
+  const toggleDrafting = useMutation({
+    mutationFn: (enabled: boolean) =>
+      updateMailbox(selectedMailboxId!, { agent_mode: enabled ? "draft" : "off" }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["mailboxes"] }),
+        queryClient.invalidateQueries({ queryKey: ["threads"] }),
+      ]);
+    },
+  });
+
   const savePlaybook = useMutation({
     mutationFn: async (input: PlaybookEditorState) => {
       const payload = {
@@ -177,6 +197,25 @@ export function AgentSettings(props: {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["playbooks", selectedMailboxId] });
       setDeleteConfirmation(null);
+    },
+  });
+
+  const removeMailbox = useMutation({
+    mutationFn: (input: { id: number; address: string }) =>
+      deleteMailbox(input.id, deleteInboxConfirmation),
+    onSuccess: async (_, deleted) => {
+      const remainingMailboxes = props.mailboxes.filter((item) => item.id !== deleted.id);
+      queryClient.setQueryData<Mailbox[]>(["mailboxes"], remainingMailboxes);
+      queryClient.removeQueries({ queryKey: ["playbooks", deleted.id] });
+      queryClient.removeQueries({ queryKey: ["threads"] });
+      queryClient.removeQueries({ queryKey: ["thread"] });
+      setDeleteInboxOpen(false);
+      setDeleteInboxConfirmation("");
+      props.onMailboxDeleted(remainingMailboxes[0]?.id ?? null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["mailboxes"] }),
+        queryClient.invalidateQueries({ queryKey: ["domains"] }),
+      ]);
     },
   });
 
@@ -253,6 +292,12 @@ export function AgentSettings(props: {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="w-full max-w-[920px] px-4 py-6 md:px-6 md:py-8">
+          <SettingsNavigation
+            active="inboxes"
+            onOpenGeneral={props.onOpenGeneral}
+            onOpenInboxes={() => undefined}
+          />
+
           <div className="mb-8 border-b pb-6">
             <div className="max-w-sm">
               <div className="mb-2 flex items-center justify-between gap-3">
@@ -278,12 +323,42 @@ export function AgentSettings(props: {
           <main className="min-w-0 flex-1 space-y-6">
             {mailbox ? (
               <>
+                <div className="flex items-start gap-4 rounded-lg border bg-background px-4 py-4 sm:px-5">
+                  <div className="min-w-0 flex-1">
+                    <label
+                      htmlFor="agent-drafting"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      AI drafting
+                    </label>
+                    <p className="mt-1 max-w-xl text-sm leading-5 text-muted-foreground">
+                      Create a draft for new customer messages. Nothing is sent without your approval.
+                    </p>
+                    {toggleDrafting.isError && (
+                      <p className="mt-2 text-xs text-destructive" role="alert">
+                        Couldn’t update AI drafting. Try again.
+                      </p>
+                    )}
+                  </div>
+                  <Switch
+                    id="agent-drafting"
+                    checked={
+                      toggleDrafting.isPending
+                        ? toggleDrafting.variables
+                        : mailbox.agent_mode !== "off"
+                    }
+                    onCheckedChange={(checked) => toggleDrafting.mutate(checked)}
+                    disabled={toggleDrafting.isPending}
+                    aria-describedby="agent-drafting-description"
+                  />
+                  <span id="agent-drafting-description" className="sr-only">
+                    When enabled, the AI creates drafts that require your review before sending.
+                  </span>
+                </div>
+
                 <Card className="gap-0 py-0">
                   <CardHeader className="border-b py-4">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-sm">Base Instructions</CardTitle>
-                      <AgentModeBadge mode={mailbox.agent_mode} />
-                    </div>
+                    <CardTitle className="text-sm">Base Instructions</CardTitle>
                     <CardAction>
                     <Button
                       size="sm"
@@ -361,6 +436,26 @@ export function AgentSettings(props: {
                       />
                     ))}
                   </div>
+                </section>
+
+                <section className="flex flex-col gap-3 border-t px-1 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-medium text-foreground">Delete inbox</h2>
+                    <p className="mt-1 break-words text-sm leading-5 text-muted-foreground">
+                      Permanently deletes {mailbox.address} and all of its conversations.
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    className="self-start sm:self-auto"
+                    onClick={() => {
+                      removeMailbox.reset();
+                      setDeleteInboxConfirmation("");
+                      setDeleteInboxOpen(true);
+                    }}
+                  >
+                    Delete inbox
+                  </Button>
                 </section>
               </>
             ) : (
@@ -578,6 +673,87 @@ export function AgentSettings(props: {
           </form>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={deleteInboxOpen}
+        onOpenChange={(open) => {
+          if (removeMailbox.isPending) return;
+          setDeleteInboxOpen(open);
+          if (!open) {
+            setDeleteInboxConfirmation("");
+            removeMailbox.reset();
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!removeMailbox.isPending} className="sm:max-w-md">
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (
+                mailbox &&
+                deleteInboxConfirmation === mailbox.address &&
+                !removeMailbox.isPending
+              ) {
+                removeMailbox.mutate({ id: mailbox.id, address: mailbox.address });
+              }
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="break-words">Delete {mailbox?.address}?</DialogTitle>
+              <DialogDescription>
+                This permanently deletes its conversations, drafts, and playbooks. This can’t be undone.
+              </DialogDescription>
+            </DialogHeader>
+
+            {mailbox && (
+              <Field label={`Type ${mailbox.address} to confirm`}>
+                <Input
+                  value={deleteInboxConfirmation}
+                  onChange={(event) => {
+                    setDeleteInboxConfirmation(event.target.value);
+                    if (removeMailbox.isError) removeMailbox.reset();
+                  }}
+                  autoComplete="off"
+                  autoFocus
+                  disabled={removeMailbox.isPending}
+                  aria-invalid={removeMailbox.isError}
+                />
+              </Field>
+            )}
+
+            {removeMailbox.isError && (
+              <p className="text-sm text-destructive" role="alert">
+                {removeMailbox.error instanceof Error
+                  ? removeMailbox.error.message
+                  : "Couldn’t delete this inbox"}
+              </p>
+            )}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteInboxOpen(false)}
+                disabled={removeMailbox.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={
+                  !mailbox ||
+                  deleteInboxConfirmation !== mailbox.address ||
+                  removeMailbox.isPending
+                }
+              >
+                {removeMailbox.isPending ? "Deleting…" : "Delete inbox"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -606,15 +782,6 @@ function parseInboxAddress(value: string): InboxSetupState | null {
     );
 
   return validLocalPart && validDomain ? { address, localPart, domainName } : null;
-}
-
-function AgentModeBadge({ mode }: { mode: Mailbox["agent_mode"] }) {
-  const label = mode === "off" ? "Agent off" : mode === "auto" ? "Auto mode" : "Draft mode";
-  return (
-    <Badge variant={mode === "off" ? "secondary" : "outline"} className="h-5 px-1.5 text-[9px] font-normal">
-      {label}
-    </Badge>
-  );
 }
 
 function PlaybookCard(props: {

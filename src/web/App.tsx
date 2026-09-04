@@ -11,11 +11,13 @@ import {
 } from "react-router";
 import { fetchMailboxes, fetchThreads, searchThreads } from "./api";
 import { AgentSettings } from "./components/AgentSettings";
+import { GeneralSettings } from "./components/GeneralSettings";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadList, type ThreadFilter } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
 
 type WorkspaceView = "inbox" | "settings";
+type SettingsSection = "general" | "inboxes";
 
 export function App() {
   return (
@@ -28,8 +30,19 @@ export function App() {
         path="/mailboxes/:mailboxId/threads/:threadId"
         element={<Workspace view="inbox" mailboxScoped />}
       />
-      <Route path="/settings" element={<Workspace view="settings" />} />
-      <Route path="/settings/inboxes/:mailboxId" element={<Workspace view="settings" />} />
+      <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
+      <Route
+        path="/settings/general"
+        element={<Workspace view="settings" settingsSection="general" />}
+      />
+      <Route
+        path="/settings/inboxes"
+        element={<Workspace view="settings" settingsSection="inboxes" />}
+      />
+      <Route
+        path="/settings/inboxes/:mailboxId"
+        element={<Workspace view="settings" settingsSection="inboxes" />}
+      />
       <Route path="*" element={<Navigate to="/inbox" replace />} />
     </Routes>
   );
@@ -38,6 +51,7 @@ export function App() {
 function Workspace(props: {
   view: WorkspaceView;
   mailboxScoped?: boolean;
+  settingsSection?: SettingsSection;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,7 +60,11 @@ function Workspace(props: {
   const autoSelectedScope = useRef<string | null>(null);
 
   const routeMailboxId = parseId(params.mailboxId);
-  const selectedMailbox = props.mailboxScoped || props.view === "settings" ? routeMailboxId : null;
+  const selectedMailbox =
+    props.mailboxScoped ||
+    (props.view === "settings" && props.settingsSection === "inboxes")
+      ? routeMailboxId
+      : null;
   const selectedThread = parseId(params.threadId);
   const search = searchParams.get("q") ?? "";
   const filter = parseFilter(searchParams.get("filter"));
@@ -61,6 +79,13 @@ function Workspace(props: {
         : fetchThreads(selectedMailbox),
     placeholderData: keepPreviousData,
     enabled: props.view === "inbox",
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (thread) =>
+          thread.draft_run_status === "queued" || thread.draft_run_status === "generating",
+      )
+        ? 3_000
+        : 30_000,
   });
 
   const listPath = selectedMailbox === null ? "/inbox" : `/mailboxes/${selectedMailbox}`;
@@ -98,24 +123,29 @@ function Workspace(props: {
   useEffect(() => {
     if (
       props.view !== "settings" ||
+      props.settingsSection !== "inboxes" ||
       selectedMailbox !== null ||
       !mailboxes.data?.length
     ) return;
     const defaultMailbox =
       mailboxes.data.find((mailbox) => mailbox.agent_mode !== "off") ?? mailboxes.data[0];
     navigate(`/settings/inboxes/${defaultMailbox.id}`, { replace: true });
-  }, [mailboxes.data, navigate, props.view, selectedMailbox]);
+  }, [mailboxes.data, navigate, props.settingsSection, props.view, selectedMailbox]);
 
   const selectMailbox = (id: number | null) => {
     navigate(id === null ? "/inbox" : `/mailboxes/${id}`);
   };
 
   const openSettings = () => {
+    navigate("/settings/general");
+  };
+
+  const openInboxSettings = () => {
     const mailboxId =
       selectedMailbox ??
       mailboxes.data?.find((mailbox) => mailbox.agent_mode !== "off")?.id ??
       mailboxes.data?.[0]?.id;
-    navigate(mailboxId ? `/settings/inboxes/${mailboxId}` : "/settings");
+    navigate(mailboxId ? `/settings/inboxes/${mailboxId}` : "/settings/inboxes");
   };
 
   const updateQuery = (key: "q" | "filter", value: string, defaultValue = "") => {
@@ -157,12 +187,28 @@ function Workspace(props: {
 
       {props.view === "settings" ? (
         <main className="min-w-0 flex-1 overflow-hidden">
-          <AgentSettings
-            mailboxes={mailboxes.data ?? []}
-            mailboxId={selectedMailbox}
-            onSelectMailbox={(id) => navigate(`/settings/inboxes/${id}`)}
-            onBack={() => navigate("/inbox")}
-          />
+          {props.settingsSection === "general" ? (
+            <GeneralSettings
+              onBack={() => navigate("/inbox")}
+              onOpenInboxes={openInboxSettings}
+            />
+          ) : (
+            <AgentSettings
+              mailboxes={mailboxes.data ?? []}
+              mailboxId={selectedMailbox}
+              onSelectMailbox={(id) => navigate(`/settings/inboxes/${id}`)}
+              onMailboxDeleted={(nextMailboxId) =>
+                navigate(
+                  nextMailboxId === null
+                    ? "/settings/inboxes"
+                    : `/settings/inboxes/${nextMailboxId}`,
+                  { replace: true },
+                )
+              }
+              onOpenGeneral={() => navigate("/settings/general")}
+              onBack={() => navigate("/inbox")}
+            />
+          )}
         </main>
       ) : (
         <>

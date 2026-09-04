@@ -24,6 +24,7 @@ class FakeStatement {
 
 class FakeDb {
   attempts = new Map();
+  allowBudget = true;
 
   prepare(sql) {
     return new FakeStatement(this, sql);
@@ -35,6 +36,8 @@ class FakeDb {
       return { id: 1, subject: "Help", mailbox_address: "support@example.com" };
     }
     if (sql.includes("SELECT id, message_id, from_address")) {
+      const requestedMessageId = args[1];
+      if (requestedMessageId && requestedMessageId !== 9) return null;
       return {
         id: 9,
         message_id: "<inbound@example.com>",
@@ -48,6 +51,9 @@ class FakeDb {
       if (!attempt || attempt.status !== "pending") return null;
       attempt.status = "sending";
       return { id: attempt.id };
+    }
+    if (sql.includes("INSERT INTO mcp_send_budget")) {
+      return this.allowBudget ? { send_count: 1 } : null;
     }
     return null;
   }
@@ -63,13 +69,17 @@ class FakeDb {
         status: "pending",
         text_body: args[4],
         to_addresses: args[5],
+        sent_by: args[6],
+        actor_id: args[7],
+        oauth_client_id: args[8],
         message_id: null,
         error: null,
       });
     } else if (sql.includes("SET status = 'failed'")) {
-      const attempt = this.attempts.get(args[1]);
+      const attemptId = args.length === 1 ? args[0] : args[1];
+      const attempt = this.attempts.get(attemptId);
       attempt.status = "failed";
-      attempt.error = args[0];
+      attempt.error = args.length === 1 ? "Daily MCP send limit reached" : args[0];
     } else if (sql.includes("SET status = 'sent'")) {
       const attempt = this.attempts.get(args[2]);
       attempt.status = "sent";
@@ -159,4 +169,82 @@ test("a pending Reply Attempt resumes safely after an interrupted request", asyn
 
   assert.equal(result.status, "sent");
   assert.equal(fixture.sends(), 1);
+});
+
+test("a provider-accepted Reply Attempt finalizes without sending again", async () => {
+  const fixture = makeEnv();
+  fixture.env.DB.attempts.set("attempt-5", {
+    id: "attempt-5",
+    thread_id: 1,
+    inbound_message_id: 9,
+    draft_id: null,
+    status: "sending",
+    text_body: "Already accepted",
+    to_addresses: JSON.stringify(["customer@example.com"]),
+    message_id: "outbound@example.com",
+    error: null,
+    sent_by: "human",
+    actor_id: null,
+    oauth_client_id: null,
+  });
+
+  const result = await sendReplyAttempt(fixture.env, {
+    attemptId: "attempt-5",
+    threadId: 1,
+    text: "Already accepted",
+  });
+
+  assert.equal(result.status, "sent");
+  assert.equal(fixture.sends(), 0);
+});
+
+test("replying to a stale inbound Message requires rereading the Conversation", async () => {
+  const fixture = makeEnv();
+
+  await assert.rejects(
+    sendReplyAttempt(fixture.env, {
+      attemptId: "attempt-6",
+      threadId: 1,
+      inboundMessageId: 8,
+      expectedRecipients: ["customer@example.com"],
+      text: "Stale reply",
+    }),
+    (error) => error instanceof ReplyIntentError && error.status === 409,
+  );
+  assert.equal(fixture.sends(), 0);
+});
+
+test("reply recipients must match the target that the caller reviewed", async () => {
+  const fixture = makeEnv();
+
+  await assert.rejects(
+    sendReplyAttempt(fixture.env, {
+      attemptId: "attempt-7",
+      threadId: 1,
+      inboundMessageId: 9,
+      expectedRecipients: ["victim@example.com"],
+      text: "Wrong target",
+    }),
+    (error) => error instanceof ReplyIntentError && error.status === 409,
+  );
+  assert.equal(fixture.sends(), 0);
+});
+
+test("the daily send budget blocks an agent before provider delivery", async () => {
+  const fixture = makeEnv();
+  fixture.env.DB.allowBudget = false;
+
+  await assert.rejects(
+    sendReplyAttempt(fixture.env, {
+      attemptId: "attempt-8",
+      threadId: 1,
+      inboundMessageId: 9,
+      expectedRecipients: ["customer@example.com"],
+      text: "Over budget",
+      actorId: "owner-subject",
+      dailySendLimit: 100,
+    }),
+    (error) => error instanceof ReplyIntentError && error.status === 429,
+  );
+  assert.equal(fixture.sends(), 0);
 });
