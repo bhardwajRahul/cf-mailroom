@@ -15,7 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { avatarClass, formatTime, initialOf } from "../lib";
+import { formatTime } from "../lib";
+import { EmailAvatar } from "./EmailAvatar";
 import {
   InboxIcon,
   SearchIcon,
@@ -248,13 +249,13 @@ function ThreadRow(props: {
       }`}
     >
       <span className="sr-only">{unread ? "Unread conversation. " : "Read conversation. "}</span>
-      <span
-        className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold transition-opacity ${
+      <EmailAvatar
+        email={thread.last_from_address}
+        label={sender}
+        className={`mt-0.5 h-8 w-8 text-[12px] transition-opacity ${
           unread ? "opacity-100" : "opacity-70"
-        } ${avatarClass(sender)}`}
-      >
-        {initialOf(sender)}
-      </span>
+        }`}
+      />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="flex min-w-0 flex-1 items-center gap-2">

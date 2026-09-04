@@ -353,6 +353,7 @@ api.get("/threads", async (c) => {
            THEN 'To: ' || COALESCE(json_extract(latest_message.to_addresses, '$[0]'), '')
          END
        ) AS last_from,
+       latest_inbound.from_address AS last_from_address,
        (SELECT COUNT(*) FROM drafts d
         WHERE d.thread_id = t.id AND d.status = 'pending'
           AND d.source_inbound_message_id = latest_inbound.id) AS pending_draft_count,
@@ -396,6 +397,7 @@ api.get("/threads/:id", async (c) => {
            THEN 'To: ' || COALESCE(json_extract(latest_message.to_addresses, '$[0]'), '')
          END
        ) AS last_from,
+       latest_inbound.from_address AS last_from_address,
        (SELECT COUNT(*) FROM drafts d
         WHERE d.thread_id = t.id AND d.status = 'pending'
           AND d.source_inbound_message_id = latest_inbound.id) AS pending_draft_count,
@@ -628,6 +630,7 @@ api.get("/search", async (c) => {
            THEN 'To: ' || COALESCE(json_extract(latest_message.to_addresses, '$[0]'), '')
          END
        ) AS last_from,
+       latest_inbound.from_address AS last_from_address,
        (SELECT COUNT(*) FROM drafts d
         WHERE d.thread_id = t.id AND d.status = 'pending'
           AND d.source_inbound_message_id = latest_inbound.id) AS pending_draft_count,

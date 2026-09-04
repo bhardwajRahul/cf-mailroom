@@ -19,7 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { avatarClass, formatTime, initialOf, splitQuotedTail } from "../lib";
+import { formatTime, splitQuotedTail } from "../lib";
+import { EmailAvatar } from "./EmailAvatar";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
@@ -345,13 +346,14 @@ function MessageCard({
   return (
     <Card className="gap-0 p-4 sm:p-5">
       <div className="mb-3 flex items-center gap-3">
-        <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${
-            isOutbound ? "bg-slate-200 text-slate-700" : avatarClass(message.from_address)
+        <EmailAvatar
+          email={message.from_address}
+          label={displayName}
+          fallback={message.sent_by === "agent" ? <SparklesIcon className="h-4 w-4" /> : undefined}
+          className={`h-9 w-9 text-[12px] ${
+            isOutbound ? "bg-slate-200 text-slate-700" : ""
           }`}
-        >
-          {message.sent_by === "agent" ? <SparklesIcon className="h-4 w-4" /> : initialOf(displayName)}
-        </span>
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-[13px] font-semibold text-slate-800">{displayName}</span>

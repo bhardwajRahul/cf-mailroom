@@ -71,6 +71,7 @@ export interface ThreadSummary {
   last_message_direction: "inbound" | "outbound";
   last_message_at: string;
   last_from: string | null;
+  last_from_address: string | null;
 }
 
 export interface Attachment {
