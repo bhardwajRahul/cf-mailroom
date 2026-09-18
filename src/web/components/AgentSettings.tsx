@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Mailbox, Playbook } from "../../shared/types";
+import type { Label, Mailbox, Playbook } from "../../shared/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,12 +32,16 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   activateDomain,
   createDomain,
+  createLabel,
   createMailbox,
   createPlaybook,
+  deleteLabel,
   deleteMailbox,
   deletePlaybook,
   fetchDomains,
+  fetchLabels,
   fetchPlaybooks,
+  updateLabel,
   updateMailbox,
   updatePlaybook,
 } from "../api";
@@ -48,6 +52,7 @@ import {
   PlusIcon,
   SettingsIcon,
   SparklesIcon,
+  TagIcon,
   TrashIcon,
 } from "./Icons";
 import { SettingsNavigation } from "./SettingsNavigation";
@@ -59,6 +64,12 @@ interface PlaybookEditorState {
   instructions: string;
   exampleReply: string;
   enabled: boolean;
+}
+
+interface LabelEditorState {
+  id?: number;
+  name: string;
+  condition: string;
 }
 
 interface InboxSetupState {
@@ -80,6 +91,11 @@ const EMPTY_PLAYBOOK: PlaybookEditorState = {
   enabled: true,
 };
 
+const EMPTY_LABEL: LabelEditorState = {
+  name: "",
+  condition: "",
+};
+
 export function AgentSettings(props: {
   mailboxes: Mailbox[];
   mailboxId: number | null;
@@ -92,6 +108,8 @@ export function AgentSettings(props: {
   const [baseInstructions, setBaseInstructions] = useState("");
   const [editor, setEditor] = useState<PlaybookEditorState | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<number | null>(null);
+  const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
+  const [labelDeleteConfirmation, setLabelDeleteConfirmation] = useState<number | null>(null);
   const [mailboxEditorOpen, setMailboxEditorOpen] = useState(false);
   const [mailboxAddress, setMailboxAddress] = useState("");
   const [mailboxValidationError, setMailboxValidationError] = useState<string | null>(null);
@@ -107,6 +125,7 @@ export function AgentSettings(props: {
   useEffect(() => {
     setBaseInstructions(mailbox?.agent_instructions ?? "");
     setDeleteConfirmation(null);
+    setLabelDeleteConfirmation(null);
     setDeleteInboxOpen(false);
     setDeleteInboxConfirmation("");
   }, [mailbox]);
@@ -114,6 +133,12 @@ export function AgentSettings(props: {
   const playbooks = useQuery({
     queryKey: ["playbooks", selectedMailboxId],
     queryFn: () => fetchPlaybooks(selectedMailboxId!),
+    enabled: selectedMailboxId !== null,
+  });
+
+  const labels = useQuery({
+    queryKey: ["labels", selectedMailboxId],
+    queryFn: () => fetchLabels(selectedMailboxId!),
     enabled: selectedMailboxId !== null,
   });
 
@@ -199,6 +224,38 @@ export function AgentSettings(props: {
       setDeleteConfirmation(null);
     },
   });
+
+  const saveLabel = useMutation({
+    mutationFn: async (input: LabelEditorState) => {
+      const payload = {
+        mailbox_id: selectedMailboxId!,
+        name: input.name.trim(),
+        condition: input.condition.trim(),
+      };
+      return input.id ? updateLabel(input.id, payload) : createLabel(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labels"] });
+      setLabelEditor(null);
+    },
+  });
+
+  const removeLabel = useMutation({
+    mutationFn: (id: number) => deleteLabel(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labels"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      setLabelDeleteConfirmation(null);
+    },
+  });
+
+  const openLabelEditor = (label?: Label) => {
+    setLabelEditor(
+      label
+        ? { id: label.id, name: label.name, condition: label.condition }
+        : { ...EMPTY_LABEL },
+    );
+  };
 
   const removeMailbox = useMutation({
     mutationFn: (input: { id: number; address: string }) =>
@@ -394,6 +451,54 @@ export function AgentSettings(props: {
                 <section>
                   <div className="mb-3 flex items-center justify-between gap-4 px-1">
                     <div className="flex items-center gap-2">
+                      <h2 className="text-[14px] font-semibold text-slate-900">Labels</h2>
+                      <Badge variant="outline" className="h-5 px-1.5 text-[9.5px] font-normal">
+                        {labels.data?.length ?? 0}
+                      </Badge>
+                    </div>
+                    <Button size="sm" onClick={() => openLabelEditor()}>
+                      <PlusIcon className="h-4 w-4" />
+                      New label
+                    </Button>
+                  </div>
+                  <p className="mb-3 px-1 text-[12px] leading-5 text-muted-foreground">
+                    New conversations are automatically tagged with every label whose condition matches. Replies are not labeled.
+                  </p>
+
+                  {labels.isLoading && <PlaybookSkeleton />}
+                  {labels.isError && (
+                    <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-left text-[12px] text-red-700">
+                      Couldn’t load labels.
+                    </div>
+                  )}
+                  {labels.data?.length === 0 && (
+                    <div className="flex items-center gap-3 rounded-lg border bg-background px-4 py-4">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                        <TagIcon className="h-4 w-4" />
+                      </span>
+                      <p className="text-sm text-muted-foreground">No labels yet</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {labels.data?.map((label) => (
+                      <LabelCard
+                        key={label.id}
+                        label={label}
+                        deleting={removeLabel.isPending && labelDeleteConfirmation === label.id}
+                        confirmDelete={labelDeleteConfirmation === label.id}
+                        onEdit={() => openLabelEditor(label)}
+                        onRequestDelete={() => setLabelDeleteConfirmation(label.id)}
+                        onCancelDelete={() => setLabelDeleteConfirmation(null)}
+                        onDelete={() => removeLabel.mutate(label.id)}
+                      />
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <div className="mb-3 flex items-center justify-between gap-4 px-1">
+                    <div className="flex items-center gap-2">
                       <h2 className="text-[14px] font-semibold text-slate-900">Playbooks</h2>
                       <Badge variant="outline" className="h-5 px-1.5 text-[9.5px] font-normal">
                         {playbooks.data?.filter((item) => item.enabled).length ?? 0} active
@@ -475,6 +580,20 @@ export function AgentSettings(props: {
           onChange={setEditor}
           onClose={() => setEditor(null)}
           onSave={() => savePlaybook.mutate(editor)}
+        />
+      )}
+
+      {labelEditor && (
+        <LabelEditor
+          state={labelEditor}
+          saving={saveLabel.isPending}
+          error={saveLabel.isError}
+          errorMessage={
+            saveLabel.error instanceof Error ? saveLabel.error.message : null
+          }
+          onChange={setLabelEditor}
+          onClose={() => setLabelEditor(null)}
+          onSave={() => saveLabel.mutate(labelEditor)}
         />
       )}
 
@@ -999,6 +1118,146 @@ function Field(props: { label: string; children: React.ReactNode }) {
       <span className="text-[12px] font-semibold text-slate-700">{props.label}</span>
       <span className="mt-1.5 block">{props.children}</span>
     </label>
+  );
+}
+
+function LabelCard(props: {
+  label: Label;
+  deleting: boolean;
+  confirmDelete: boolean;
+  onEdit: () => void;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
+          <TagIcon className="h-[18px] w-[18px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-[13px] font-semibold text-slate-900">{props.label.name}</h3>
+          </div>
+          <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-slate-500">
+            {props.label.condition}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-3">
+        {props.confirmDelete ? (
+          <div className="flex items-center gap-1.5">
+            <span className="mr-1 text-[10px] text-red-600">Delete this label?</span>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={props.onCancelDelete}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="xs"
+              onClick={props.onDelete}
+              disabled={props.deleting}
+            >
+              {props.deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={props.onEdit}
+            >
+              <PencilIcon className="h-3.5 w-3.5" />
+              Edit
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={props.onRequestDelete}
+              className="text-muted-foreground hover:text-destructive"
+              aria-label={`Delete ${props.label.name}`}
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function LabelEditor(props: {
+  state: LabelEditorState;
+  saving: boolean;
+  error: boolean;
+  errorMessage: string | null;
+  onChange: (state: LabelEditorState) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const valid = props.state.name.trim() && props.state.condition.trim();
+
+  const update = (fields: Partial<LabelEditorState>) =>
+    props.onChange({ ...props.state, ...fields });
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && props.onClose()}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{props.state.id ? "Edit label" : "New label"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+          <Field label="Name">
+            <Input
+              value={props.state.name}
+              onChange={(event) => update({ name: event.target.value })}
+              placeholder="guest-post"
+              autoFocus
+            />
+          </Field>
+
+          <Field label="Match condition">
+            <Textarea
+              value={props.state.condition}
+              onChange={(event) => update({ condition: event.target.value })}
+              placeholder="Apply when the sender pitches writing a guest article for our blog, or asks us to publish their contributed post."
+              rows={4}
+            />
+            <span className="mt-1.5 block text-[11px] leading-4 text-muted-foreground">
+              New incoming emails are checked against this description. Replies in existing conversations are not labeled.
+            </span>
+          </Field>
+
+          {props.error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">
+              {props.errorMessage ?? "Couldn’t save this label. Check the fields and try again."}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={props.onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={props.onSave}
+            disabled={!valid || props.saving}
+          >
+            {props.saving ? "Saving…" : props.state.id ? "Save changes" : "Create label"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

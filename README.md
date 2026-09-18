@@ -40,6 +40,11 @@ new inbound Message ──► Web Push ──► subscribed browsers
   reads. Stable idempotency keys prevent retries from sending twice.
 - **Attachments and Reply-To**: inbound files are stored in R2 and downloadable
   from the Conversation; replies prefer the sender's `Reply-To` address.
+- **Auto labels**: each Inbox can define labels (e.g. `guest-post`,
+  `link-exchange`) with a natural-language match condition. New inbound mail is
+  evaluated once with the `typesafe/jev` model and tagged with every matching
+  label; replies are never labeled. The conversation list filters by label and
+  supports multi-select mark-read/archive.
 
 ## Setup
 
@@ -183,7 +188,7 @@ can discover or register.
 
 ## Roadmap
 
-- [ ] Triage: rules + small-model classification on inbound mail
+- [x] Triage: per-inbox auto labels via `typesafe/jev` classification on new inbound mail
 - [ ] External tools for the draft agent (for example Stripe or product databases)
 - [ ] Delivery and bounce status inside the Conversation (available today in Cloudflare Email Logs)
 - [ ] Full-text search UI (backend `/api/search` already works)

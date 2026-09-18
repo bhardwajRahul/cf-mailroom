@@ -9,7 +9,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-import { fetchMailboxes, fetchThreads, searchThreads } from "./api";
+import { fetchLabels, fetchMailboxes, fetchThreads, searchThreads } from "./api";
 import { AgentSettings } from "./components/AgentSettings";
 import { GeneralSettings } from "./components/GeneralSettings";
 import { Sidebar } from "./components/Sidebar";
@@ -68,15 +68,17 @@ function Workspace(props: {
   const selectedThread = parseId(params.threadId);
   const search = searchParams.get("q") ?? "";
   const filter = parseFilter(searchParams.get("filter"));
+  const activeLabel = parseId(searchParams.get("label") ?? undefined);
   const deferredSearch = useDeferredValue(search.trim());
 
   const mailboxes = useQuery({ queryKey: ["mailboxes"], queryFn: fetchMailboxes });
+  const labels = useQuery({ queryKey: ["labels"], queryFn: () => fetchLabels() });
   const threads = useQuery({
-    queryKey: ["threads", selectedMailbox, deferredSearch],
+    queryKey: ["threads", selectedMailbox, deferredSearch, activeLabel],
     queryFn: () =>
       deferredSearch
-        ? searchThreads(deferredSearch, selectedMailbox)
-        : fetchThreads(selectedMailbox),
+        ? searchThreads(deferredSearch, selectedMailbox, activeLabel)
+        : fetchThreads(selectedMailbox, activeLabel),
     placeholderData: keepPreviousData,
     enabled: props.view === "inbox",
     refetchInterval: (query) =>
@@ -148,7 +150,7 @@ function Workspace(props: {
     navigate(mailboxId ? `/settings/inboxes/${mailboxId}` : "/settings/inboxes");
   };
 
-  const updateQuery = (key: "q" | "filter", value: string, defaultValue = "") => {
+  const updateQuery = (key: "q" | "filter" | "label", value: string, defaultValue = "") => {
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -215,12 +217,14 @@ function Workspace(props: {
           <ThreadList
             mailboxes={mailboxes.data ?? []}
             threads={threads.data ?? []}
+            labels={labels.data ?? []}
             title={selectedMailboxName}
             selected={selectedThread}
             selectedMailbox={selectedMailbox}
             showMailboxChip={selectedMailbox === null}
             search={search}
             filter={filter}
+            activeLabel={activeLabel}
             loading={threads.isLoading}
             fetching={threads.isFetching}
             error={threads.isError}
@@ -228,6 +232,7 @@ function Workspace(props: {
             emptyInbox={inboxIsEmpty}
             onSearch={(query) => updateQuery("q", query)}
             onFilter={(nextFilter) => updateQuery("filter", nextFilter, "all")}
+            onSelectLabel={(id) => updateQuery("label", id === null ? "" : String(id))}
             onSelectMailbox={selectMailbox}
             onOpenSettings={openSettings}
             onSelect={(id) =>

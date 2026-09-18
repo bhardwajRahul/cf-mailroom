@@ -2,6 +2,8 @@ import type {
   BrowserPushSubscription,
   Domain,
   GeneralSettings,
+  Label,
+  LabelInput,
   Mailbox,
   Playbook,
   PlaybookInput,
@@ -96,16 +98,52 @@ export const updatePlaybook = (id: number, input: Partial<PlaybookInput>) =>
 export const deletePlaybook = (id: number) =>
   request<{ ok: true }>(`/playbooks/${id}`, { method: "DELETE" });
 
-export const fetchThreads = (mailboxId: number | null) =>
-  request<ThreadSummary[]>(`/threads${mailboxId ? `?mailbox_id=${mailboxId}` : ""}`);
+export const fetchLabels = (mailboxId?: number | null) =>
+  request<Label[]>(`/labels${mailboxId ? `?mailbox_id=${mailboxId}` : ""}`);
+
+export const createLabel = (input: LabelInput) =>
+  request<Label>("/labels", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+export const updateLabel = (id: number, input: Partial<LabelInput>) =>
+  request<Label>(`/labels/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+export const deleteLabel = (id: number) =>
+  request<{ ok: true }>(`/labels/${id}`, { method: "DELETE" });
+
+function threadListParams(mailboxId: number | null, labelId: number | null) {
+  const params = new URLSearchParams();
+  if (mailboxId !== null) params.set("mailbox_id", String(mailboxId));
+  if (labelId !== null) params.set("label_id", String(labelId));
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export const fetchThreads = (mailboxId: number | null, labelId: number | null = null) =>
+  request<ThreadSummary[]>(`/threads${threadListParams(mailboxId, labelId)}`);
 
 export const fetchThread = (id: number) => request<ThreadDetail>(`/threads/${id}`);
 
-export const searchThreads = (q: string, mailboxId: number | null) => {
+export const searchThreads = (q: string, mailboxId: number | null, labelId: number | null = null) => {
   const params = new URLSearchParams({ q });
   if (mailboxId !== null) params.set("mailbox_id", String(mailboxId));
+  if (labelId !== null) params.set("label_id", String(labelId));
   return request<ThreadSummary[]>(`/search?${params}`);
 };
+
+export const bulkUpdateThreads = (ids: number[], action: "read" | "archive") =>
+  request<{ ok: true; updated: number }>("/threads/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, action }),
+  });
 
 export const markRead = (id: number) => request(`/threads/${id}/read`, { method: "POST" });
 

@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef } from "react";
-import type { Mailbox, ThreadSummary } from "../../shared/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Label, Mailbox, ThreadSummary } from "../../shared/types";
 import {
   deriveAgentDraftStatus,
   type AgentDraftStatus,
 } from "../../shared/agent-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -15,13 +17,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { bulkUpdateThreads } from "../api";
 import { formatTime } from "../lib";
 import { EmailAvatar } from "./EmailAvatar";
 import {
-  InboxIcon,
+  ArchiveIcon,
   SearchIcon,
   SettingsIcon,
   SparklesIcon,
+  TagIcon,
+  XIcon,
 } from "./Icons";
 
 export type ThreadFilter = "all" | "unread" | "drafts";
@@ -29,12 +34,14 @@ export type ThreadFilter = "all" | "unread" | "drafts";
 export function ThreadList(props: {
   mailboxes: Mailbox[];
   threads: ThreadSummary[];
+  labels: Label[];
   title: string;
   selected: number | null;
   selectedMailbox: number | null;
   showMailboxChip: boolean;
   search: string;
   filter: ThreadFilter;
+  activeLabel: number | null;
   loading: boolean;
   fetching: boolean;
   error: boolean;
@@ -42,11 +49,14 @@ export function ThreadList(props: {
   emptyInbox: boolean;
   onSearch: (q: string) => void;
   onFilter: (filter: ThreadFilter) => void;
+  onSelectLabel: (id: number | null) => void;
   onSelectMailbox: (id: number | null) => void;
   onOpenSettings: () => void;
   onSelect: (id: number) => void;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -66,6 +76,54 @@ export function ThreadList(props: {
     }
     return props.threads;
   }, [props.filter, props.threads]);
+
+  const visibleIds = useMemo(
+    () => new Set(visibleThreads.map((thread) => thread.id)),
+    [visibleThreads],
+  );
+
+  useEffect(() => {
+    setChecked((current) => {
+      const kept = [...current].filter((id) => visibleIds.has(id));
+      return kept.length === current.size ? current : new Set(kept);
+    });
+  }, [visibleIds]);
+
+  const availableLabels = useMemo(
+    () =>
+      props.labels.filter(
+        (label) =>
+          props.selectedMailbox === null || label.mailbox_id === props.selectedMailbox,
+      ),
+    [props.labels, props.selectedMailbox],
+  );
+
+  const mailboxAddress = useMemo(
+    () => new Map(props.mailboxes.map((mailbox) => [mailbox.id, mailbox.address])),
+    [props.mailboxes],
+  );
+
+  const bulkUpdate = useMutation({
+    mutationFn: ({ ids, action }: { ids: number[]; action: "read" | "archive" }) =>
+      bulkUpdateThreads(ids, action),
+    onSuccess: () => {
+      setChecked(new Set());
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["mailboxes"] });
+    },
+  });
+
+  const toggleChecked = (id: number, value: boolean) => {
+    setChecked((current) => {
+      const next = new Set(current);
+      if (value) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const checkedCount = checked.size;
+  const allChecked = visibleThreads.length > 0 && checkedCount === visibleThreads.length;
 
   const unreadCount = props.threads.filter((thread) => !thread.is_read).length;
   const draftCount = props.threads.filter((thread) => thread.pending_draft_count > 0).length;
@@ -176,6 +234,84 @@ export function ThreadList(props: {
                 <TabsTrigger value="drafts">Drafts{draftCount > 0 ? ` ${draftCount}` : ""}</TabsTrigger>
               </TabsList>
             </Tabs>
+
+            {availableLabels.length > 0 && (
+              <div className="mt-2 flex items-center gap-2">
+                <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <Select
+                  value={props.activeLabel === null ? "all" : String(props.activeLabel)}
+                  onValueChange={(value) =>
+                    props.onSelectLabel(value === "all" ? null : Number(value))
+                  }
+                >
+                  <SelectTrigger size="sm" className="h-7 min-w-0 flex-1 text-xs" aria-label="Filter by label">
+                    <SelectValue placeholder="All labels" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All labels</SelectItem>
+                    {availableLabels.map((label) => (
+                      <SelectItem key={label.id} value={String(label.id)}>
+                        {props.selectedMailbox === null
+                          ? `${label.name} · ${mailboxAddress.get(label.mailbox_id) ?? ""}`
+                          : label.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {visibleThreads.length > 0 && (
+              <div className="mt-2.5 flex min-h-7 items-center gap-2">
+                <Checkbox
+                  checked={allChecked ? true : checkedCount > 0 ? "indeterminate" : false}
+                  onCheckedChange={(value) =>
+                    setChecked(value === true ? new Set(visibleThreads.map((t) => t.id)) : new Set())
+                  }
+                  aria-label="Select all conversations"
+                />
+                {checkedCount > 0 ? (
+                  <>
+                    <span className="text-[11.5px] text-muted-foreground">
+                      {checkedCount} selected
+                    </span>
+                    <span className="ml-auto flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        disabled={bulkUpdate.isPending}
+                        onClick={() =>
+                          bulkUpdate.mutate({ ids: [...checked], action: "read" })
+                        }
+                      >
+                        Mark read
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        disabled={bulkUpdate.isPending}
+                        onClick={() =>
+                          bulkUpdate.mutate({ ids: [...checked], action: "archive" })
+                        }
+                      >
+                        <ArchiveIcon className="h-3.5 w-3.5" />
+                        Archive
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => setChecked(new Set())}
+                        aria-label="Clear selection"
+                      >
+                        <XIcon className="h-3.5 w-3.5" />
+                      </Button>
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11.5px] text-muted-foreground">Select all</span>
+                )}
+              </div>
+            )}
           </>
         )}
       </header>
@@ -189,7 +325,6 @@ export function ThreadList(props: {
 
         {props.error && !props.loading && (
           <ListState
-            icon={<InboxIcon className="h-5 w-5" />}
             title="Couldn’t load conversations"
             detail="Check your connection and try again."
           />
@@ -197,8 +332,13 @@ export function ThreadList(props: {
 
         {!props.emptyInbox && !props.loading && !props.error && visibleThreads.length === 0 && (
           <ListState
-            icon={props.filter === "drafts" ? <SparklesIcon className="h-5 w-5" /> : <InboxIcon className="h-5 w-5" />}
-            title={props.search ? "No matching conversations" : props.filter === "all" ? "Inbox zero" : `No ${props.filter} conversations`}
+            title={
+              props.search || props.activeLabel !== null
+                ? "No matching conversations"
+                : props.filter === "all"
+                  ? "Inbox zero"
+                  : `No ${props.filter} conversations`
+            }
             detail={props.search ? "Try a name, subject, or message text." : undefined}
           />
         )}
@@ -208,7 +348,9 @@ export function ThreadList(props: {
             key={thread.id}
             thread={thread}
             selected={props.selected === thread.id}
+            checked={checked.has(thread.id)}
             showMailbox={props.showMailboxChip}
+            onCheckedChange={(value) => toggleChecked(thread.id, value)}
             onClick={() => props.onSelect(thread.id)}
           />
         ))}
@@ -220,7 +362,9 @@ export function ThreadList(props: {
 function ThreadRow(props: {
   thread: ThreadSummary;
   selected: boolean;
+  checked: boolean;
   showMailbox: boolean;
+  onCheckedChange: (value: boolean) => void;
   onClick: () => void;
 }) {
   const { thread } = props;
@@ -238,9 +382,8 @@ function ThreadRow(props: {
     (unread || ["processing", "draft_ready", "failed"].includes(agentStatus));
 
   return (
-    <button
-      onClick={props.onClick}
-      className={`group relative flex w-full gap-3 border-b px-4 py-3.5 text-left transition-colors focus-visible:z-10 ${
+    <div
+      className={`group relative flex w-full border-b transition-colors ${
         props.selected
           ? "bg-slate-100 hover:bg-slate-100"
           : unread
@@ -248,15 +391,27 @@ function ThreadRow(props: {
             : "bg-background hover:bg-muted/40"
       }`}
     >
-      <span className="sr-only">{unread ? "Unread conversation. " : "Read conversation. "}</span>
-      <EmailAvatar
-        email={thread.last_from_address}
-        label={sender}
-        className={`mt-0.5 h-8 w-8 text-[12px] transition-opacity ${
-          unread ? "opacity-100" : "opacity-70"
-        }`}
-      />
-      <span className="min-w-0 flex-1">
+      <span className="flex items-start pt-4 pl-3">
+        <Checkbox
+          checked={props.checked}
+          onCheckedChange={(value) => props.onCheckedChange(value === true)}
+          aria-label={`Select conversation with ${sender}`}
+          className={props.checked ? "" : "opacity-50 group-hover:opacity-100 focus-visible:opacity-100"}
+        />
+      </span>
+      <button
+        onClick={props.onClick}
+        className="flex min-w-0 flex-1 gap-3 py-3.5 pr-4 pl-2.5 text-left focus-visible:z-10"
+      >
+        <span className="sr-only">{unread ? "Unread conversation. " : "Read conversation. "}</span>
+        <EmailAvatar
+          email={thread.last_from_address}
+          label={sender}
+          className={`mt-0.5 h-8 w-8 text-[12px] transition-opacity ${
+            unread ? "opacity-100" : "opacity-70"
+          }`}
+        />
+        <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="flex min-w-0 flex-1 items-center gap-2">
             {unread && (
@@ -298,18 +453,29 @@ function ThreadRow(props: {
           {thread.snippet}
         </span>
 
-        {(props.showMailbox || showAgentStatus) && (
-          <span className="mt-2 flex min-w-0 items-center gap-2">
+        {(props.showMailbox || showAgentStatus || thread.labels.length > 0) && (
+          <span className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
             {props.showMailbox && (
               <Badge variant="secondary" className="h-5 min-w-0 px-1.5 text-[9.5px] font-normal">
                 <span className="truncate">{thread.mailbox_address}</span>
               </Badge>
             )}
+            {thread.labels.map((label) => (
+              <Badge
+                key={label.id}
+                variant="outline"
+                className="h-5 shrink-0 gap-1 px-1.5 text-[9.5px] font-normal text-muted-foreground"
+              >
+                <TagIcon className="h-3 w-3" />
+                {label.name}
+              </Badge>
+            ))}
             {showAgentStatus && <AgentStatusBadge status={agentStatus} />}
           </span>
         )}
-      </span>
-    </button>
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -341,13 +507,10 @@ function AgentStatusBadge({ status }: { status: AgentDraftStatus }) {
   );
 }
 
-function ListState(props: { icon: React.ReactNode; title: string; detail?: string }) {
+function ListState(props: { title: string; detail?: string }) {
   return (
-    <div className="px-4 py-12 text-left">
-      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-        {props.icon}
-      </span>
-      <p className="mt-3 text-[13px] font-medium text-slate-600">{props.title}</p>
+    <div className="px-4 py-5 text-left">
+      <p className="text-[13px] text-muted-foreground">{props.title}</p>
       {props.detail && (
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{props.detail}</p>
       )}

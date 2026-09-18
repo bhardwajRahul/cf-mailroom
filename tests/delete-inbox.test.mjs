@@ -124,6 +124,9 @@ function makeFixture() {
     INSERT INTO outbound_attempts
       (id, mailbox_id, thread_id, status, to_addresses, subject, text_body)
     VALUES ('outbound-sent', 1, 10, 'sent', '["customer@example.net"]', 'Target', 'Sent');
+    INSERT INTO labels (id, mailbox_id, name, condition)
+    VALUES (500, 1, 'guest-post', 'A guest post pitch');
+    INSERT INTO thread_labels (thread_id, label_id) VALUES (10, 500);
   `);
 
   const RAW = new FakeR2([
@@ -159,6 +162,8 @@ test("deleting an inbox removes its data and objects but keeps its domain and si
     "reply_attempts",
     "outbound_attempts",
     "playbooks",
+    "labels",
+    "thread_labels",
   ]) {
     assert.equal(count(fixture.database, table), table === "threads" || table === "messages" ? 1 : 0);
   }

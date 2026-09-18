@@ -53,6 +53,26 @@ export interface PlaybookInput {
   enabled?: boolean;
 }
 
+export interface Label {
+  id: number;
+  mailbox_id: number;
+  name: string;
+  condition: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LabelInput {
+  mailbox_id: number;
+  name: string;
+  condition: string;
+}
+
+export interface ThreadLabel {
+  id: number;
+  name: string;
+}
+
 export interface ThreadSummary {
   id: number;
   mailbox_id: number;
@@ -72,6 +92,7 @@ export interface ThreadSummary {
   last_message_at: string;
   last_from: string | null;
   last_from_address: string | null;
+  labels: ThreadLabel[];
 }
 
 export interface Attachment {

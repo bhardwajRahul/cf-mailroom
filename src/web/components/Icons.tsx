@@ -143,6 +143,15 @@ export function PaperclipIcon(props: IconProps) {
   );
 }
 
+export function TagIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8-9.5 9.5-7.5-7.5Z" />
+      <circle cx="8" cy="8" r="1.5" />
+    </svg>
+  );
+}
+
 export function ExternalLinkIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>

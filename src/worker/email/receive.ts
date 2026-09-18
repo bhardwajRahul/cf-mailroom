@@ -1,6 +1,7 @@
 import PostalMime, { type Attachment, type Email } from "postal-mime";
 import { enqueueDraftRun } from "../agent/runs";
 import { splitQuotedTail } from "../../shared/quote";
+import { labelNewThread } from "./label";
 import { notifyNewEmail } from "../notifications/push";
 import {
   addressOf,
@@ -83,6 +84,14 @@ export async function receiveEmail(
       });
 
   await storeAttachments(env, mailbox.id, stored.messageId, parsed.attachments);
+
+  if (existingThreadId === null) {
+    ctx.waitUntil(
+      labelNewThread(env, stored.threadId, stored.messageId).catch((error) =>
+        console.error("Auto-label task failed", error),
+      ),
+    );
+  }
 
   ctx.waitUntil(
     notifyNewEmail(env, {

@@ -13,9 +13,12 @@ import type {
   Domain,
   DraftRun,
   GeneralSettings,
+  Label,
+  LabelInput,
   Mailbox,
   Message,
   PlaybookInput,
+  ThreadLabel,
 } from "../../shared/types";
 
 export const api = new Hono<{ Bindings: Env }>();
@@ -338,10 +341,106 @@ api.delete("/playbooks/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+api.get("/labels", async (c) => {
+  const mailboxId = Number(c.req.query("mailbox_id") ?? 0);
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM labels
+     WHERE (? = 0 OR mailbox_id = ?)
+     ORDER BY mailbox_id, name`,
+  )
+    .bind(mailboxId, mailboxId)
+    .all<Label>();
+  return c.json(results);
+});
+
+api.post("/labels", async (c) => {
+  const body = await c.req.json<LabelInput>();
+  const validation = validateLabel(body);
+  if (validation) return c.json({ error: validation }, 400);
+
+  const mailbox = await c.env.DB.prepare("SELECT id FROM mailboxes WHERE id = ?")
+    .bind(body.mailbox_id)
+    .first();
+  if (!mailbox) return c.json({ error: "Inbox not found" }, 404);
+
+  const count = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM labels WHERE mailbox_id = ?",
+  )
+    .bind(body.mailbox_id)
+    .first<{ count: number }>();
+  if (Number(count?.count ?? 0) >= MAX_LABELS_PER_MAILBOX) {
+    return c.json(
+      { error: `This inbox already has the maximum of ${MAX_LABELS_PER_MAILBOX} labels` },
+      409,
+    );
+  }
+
+  try {
+    const label = await c.env.DB.prepare(
+      `INSERT INTO labels (mailbox_id, name, condition)
+       VALUES (?, ?, ?)
+       RETURNING *`,
+    )
+      .bind(body.mailbox_id, body.name.trim(), body.condition.trim())
+      .first<Label>();
+    return c.json(label, 201);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("UNIQUE")) {
+      return c.json({ error: "A label with this name already exists" }, 409);
+    }
+    throw error;
+  }
+});
+
+api.patch("/labels/:id", async (c) => {
+  const id = parsePositiveId(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid label id" }, 400);
+
+  const body = await c.req.json<Partial<LabelInput>>();
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  for (const field of ["name", "condition"] as const) {
+    if (body[field] === undefined) continue;
+    const value = body[field]?.trim() ?? "";
+    if (!value) return c.json({ error: `${field} cannot be empty` }, 400);
+    fields.push(`${field} = ?`);
+    values.push(value);
+  }
+  if (fields.length === 0) return c.json({ error: "no fields to update" }, 400);
+
+  fields.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+  try {
+    const label = await c.env.DB.prepare(
+      `UPDATE labels SET ${fields.join(", ")} WHERE id = ? RETURNING *`,
+    )
+      .bind(...values, id)
+      .first<Label>();
+    if (!label) return c.json({ error: "label not found" }, 404);
+    return c.json(label);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("UNIQUE")) {
+      return c.json({ error: "A label with this name already exists" }, 409);
+    }
+    throw error;
+  }
+});
+
+api.delete("/labels/:id", async (c) => {
+  const id = parsePositiveId(c.req.param("id"));
+  if (id === null) return c.json({ error: "invalid label id" }, 400);
+  const results = await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM thread_labels WHERE label_id = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM labels WHERE id = ?").bind(id),
+  ]);
+  if (!results[1].meta.changes) return c.json({ error: "label not found" }, 404);
+  return c.json({ ok: true });
+});
+
 api.get("/threads", async (c) => {
   const mailboxId = c.req.query("mailbox_id");
+  const labelId = c.req.query("label_id");
   const status = c.req.query("status") ?? "open";
-  const conditions = ["t.status = ?2"];
+  const conditions = ["t.status = ?2", "(?3 = 0 OR EXISTS (SELECT 1 FROM thread_labels tl WHERE tl.thread_id = t.id AND tl.label_id = ?3))"];
   if (mailboxId) conditions.push("t.mailbox_id = ?1");
   const { results } = await c.env.DB.prepare(
     `SELECT t.*, m.address AS mailbox_address, m.color AS mailbox_color,
@@ -380,9 +479,11 @@ api.get("/threads", async (c) => {
      WHERE ${conditions.join(" AND ")}
      ORDER BY t.last_message_at DESC LIMIT 100`,
   )
-    .bind(mailboxId ?? 0, status)
+    .bind(mailboxId ?? 0, status, labelId ?? 0)
     .all();
-  return c.json(results);
+  const rows = results as unknown as Array<{ id: number; labels: ThreadLabel[] }>;
+  await attachLabels(c.env, rows);
+  return c.json(rows);
 });
 
 api.get("/threads/:id", async (c) => {
@@ -426,6 +527,7 @@ api.get("/threads/:id", async (c) => {
     .bind(id)
     .first();
   if (!thread) return c.json({ error: "thread not found" }, 404);
+  await attachLabels(c.env, [thread as { id: number; labels: ThreadLabel[] }]);
 
   const [messages, drafts, draftRun] = await Promise.all([
     c.env.DB.prepare("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at").bind(id).all(),
@@ -560,6 +662,29 @@ api.post("/threads/:id/draft", async (c) => {
   return c.json({ ok: true, run_id: runId }, 202);
 });
 
+api.post("/threads/bulk", async (c) => {
+  const body = await c.req.json<{ ids?: unknown; action?: unknown }>();
+  const ids = Array.isArray(body.ids)
+    ? [...new Set(body.ids.filter((id) => Number.isInteger(id) && (id as number) > 0))]
+    : [];
+  if (ids.length === 0 || ids.length > 100) {
+    return c.json({ error: "ids must contain 1-100 conversation ids" }, 400);
+  }
+  if (body.action !== "read" && body.action !== "archive") {
+    return c.json({ error: "action must be read or archive" }, 400);
+  }
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await c.env.DB.prepare(
+    body.action === "read"
+      ? `UPDATE threads SET is_read = 1 WHERE id IN (${placeholders})`
+      : `UPDATE threads SET status = 'archived' WHERE id IN (${placeholders})`,
+  )
+    .bind(...ids)
+    .run();
+  return c.json({ ok: true, updated: Number(result.meta.changes ?? 0) });
+});
+
 api.post("/threads/:id/read", async (c) => {
   await c.env.DB.prepare("UPDATE threads SET is_read = 1 WHERE id = ?").bind(c.req.param("id")).run();
   return c.json({ ok: true });
@@ -619,6 +744,7 @@ api.post("/drafts/:id/discard", async (c) => {
 api.get("/search", async (c) => {
   const q = c.req.query("q")?.trim();
   const mailboxId = c.req.query("mailbox_id");
+  const labelId = c.req.query("label_id");
   if (!q) return c.json([]);
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT t.*, m.address AS mailbox_address, m.color AS mailbox_color,
@@ -658,12 +784,55 @@ api.get("/search", async (c) => {
      )
      WHERE messages_fts MATCH ?1
        AND (?2 = 0 OR t.mailbox_id = ?2)
+       AND (?3 = 0 OR EXISTS (
+         SELECT 1 FROM thread_labels tl
+         WHERE tl.thread_id = t.id AND tl.label_id = ?3
+       ))
      ORDER BY t.last_message_at DESC LIMIT 50`,
   )
-    .bind(q, mailboxId ?? 0)
+    .bind(q, mailboxId ?? 0, labelId ?? 0)
     .all();
-  return c.json(results);
+  const rows = results as unknown as Array<{ id: number; labels: ThreadLabel[] }>;
+  await attachLabels(c.env, rows);
+  return c.json(rows);
 });
+
+const MAX_LABELS_PER_MAILBOX = 20;
+
+async function attachLabels(
+  env: Env,
+  rows: Array<{ id: number; labels: ThreadLabel[] }>,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const placeholders = rows.map(() => "?").join(", ");
+  const { results } = await env.DB.prepare(
+    `SELECT tl.thread_id, l.id, l.name
+     FROM thread_labels tl
+     JOIN labels l ON l.id = tl.label_id
+     WHERE tl.thread_id IN (${placeholders})
+     ORDER BY l.name`,
+  )
+    .bind(...rows.map((row) => row.id))
+    .all<{ thread_id: number; id: number; name: string }>();
+  const byThread = new Map<number, ThreadLabel[]>();
+  for (const row of results) {
+    const list = byThread.get(row.thread_id) ?? [];
+    list.push({ id: row.id, name: row.name });
+    byThread.set(row.thread_id, list);
+  }
+  for (const row of rows) row.labels = byThread.get(row.id) ?? [];
+}
+
+function validateLabel(body: LabelInput): string | null {
+  if (!Number.isInteger(body.mailbox_id) || body.mailbox_id <= 0) {
+    return "mailbox_id is required";
+  }
+  if (!body.name?.trim()) return "name is required";
+  if (!body.condition?.trim()) return "condition is required";
+  if (body.name.length > 80) return "name is too long";
+  if (body.condition.length > 2000) return "condition is too long";
+  return null;
+}
 
 function validatePlaybook(body: PlaybookInput): string | null {
   if (!Number.isInteger(body.mailbox_id) || body.mailbox_id <= 0) {

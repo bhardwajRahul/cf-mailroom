@@ -24,6 +24,10 @@ _Avoid_: System prompt, global prompt
 Manually authored guidance for one recognizable support scenario, composed with the Inbox's Base Instructions when it matches a conversation.
 _Avoid_: Template, canned response, rule
 
+**Label**:
+A per-Inbox named tag with a natural-language match condition. When a new inbound Message opens a Conversation, the `typesafe/jev` evaluation model checks every Label's condition and applies each match; replies in existing Conversations are never labeled. A Conversation can carry any number of Labels, and the conversation list can be filtered by Label.
+_Avoid_: Tag, category, folder
+
 **Agent Draft**:
 A proposed reply authored by the agent and held for human review before sending.
 _Avoid_: Auto-reply, suggestion
