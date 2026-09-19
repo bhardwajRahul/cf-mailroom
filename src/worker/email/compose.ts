@@ -1,9 +1,21 @@
 import { normalizeSubject } from "./rules.ts";
+import {
+  attachmentFingerprint,
+  normalizeAttachments,
+  parseStagedAttachments,
+  recordAttachmentStatements,
+  sendableAttachments,
+  stageAttachments,
+  type NormalizedAttachment,
+  type OutboundAttachmentInput,
+  type StagedAttachment,
+} from "./attachments.ts";
 import { sendEmail, type SendEmailEnv } from "./send.ts";
 import { claimDailySendBudget } from "./send-budget.ts";
 
 export interface ComposeEnv extends SendEmailEnv {
   DB: D1Database;
+  RAW: R2Bucket;
 }
 
 export interface ComposeIntent {
@@ -12,6 +24,7 @@ export interface ComposeIntent {
   to: string[];
   subject: string;
   text: string;
+  attachments?: OutboundAttachmentInput[];
   actorId?: string;
   oauthClientId?: string;
   dailySendLimit?: number;
@@ -36,6 +49,7 @@ interface StoredAttempt {
   to_addresses: string;
   subject: string;
   text_body: string;
+  attachments: string;
   message_id: string | null;
   actor_id: string | null;
   oauth_client_id: string | null;
@@ -47,19 +61,22 @@ export async function sendNewEmailAttempt(
   intent: ComposeIntent,
 ): Promise<ComposeAttemptResult> {
   const normalized = normalizeIntent(intent);
+  const attachments = normalizeAttachments(intent.attachments ?? []);
   if (normalized.to.length !== 1 || !normalized.to[0]) {
     throw new ComposeIntentError("New email requires exactly one recipient", 400);
   }
   if (!normalized.subject) throw new ComposeIntentError("Subject is required", 400);
-  if (!normalized.text) throw new ComposeIntentError("Message text is required", 400);
+  if (!normalized.text && attachments.length === 0) {
+    throw new ComposeIntentError("Message text is required", 400);
+  }
   const existing = await getAttempt(env, normalized.attemptId);
   if (existing) {
-    existingResult(existing, normalized);
+    existingResult(existing, normalized, attachments);
     if (existing.status === "sent" || existing.status === "failed") {
-      return existingResult(existing, normalized);
+      return existingResult(existing, normalized, attachments);
     }
     if (existing.status === "sending" && (!existing.message_id || !existing.thread_id)) {
-      return existingResult(existing, normalized);
+      return existingResult(existing, normalized, attachments);
     }
   }
 
@@ -75,12 +92,23 @@ export async function sendNewEmailAttempt(
     throw new ComposeIntentError("Inbox domain is not ready for outbound sending", 409);
   }
 
+  let staged: StagedAttachment[] = existing
+    ? parseStagedAttachments(existing.attachments)
+    : [];
+
   if (!existing) {
     try {
+      staged = await stageAttachments(
+        env.RAW,
+        normalized.mailboxId,
+        normalized.attemptId,
+        attachments,
+      );
       await env.DB.prepare(
         `INSERT INTO outbound_attempts
-           (id, mailbox_id, status, to_addresses, subject, text_body, actor_id, oauth_client_id)
-         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)`,
+           (id, mailbox_id, status, to_addresses, subject, text_body, attachments,
+            actor_id, oauth_client_id)
+         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
       )
         .bind(
           normalized.attemptId,
@@ -88,6 +116,7 @@ export async function sendNewEmailAttempt(
           JSON.stringify(normalized.to),
           normalized.subject,
           normalized.text,
+          JSON.stringify(staged),
           normalized.actorId ?? null,
           normalized.oauthClientId ?? null,
         )
@@ -103,7 +132,7 @@ export async function sendNewEmailAttempt(
     } catch (error) {
       if (error instanceof ComposeIntentError) throw error;
       const raced = await getAttempt(env, normalized.attemptId);
-      if (raced) return existingResult(raced, normalized);
+      if (raced) return existingResult(raced, normalized, attachments);
       throw error;
     }
   }
@@ -119,7 +148,7 @@ export async function sendNewEmailAttempt(
     if (!claimed) {
       const raced = await getAttempt(env, normalized.attemptId);
       if (!raced) throw new ComposeIntentError("Send Attempt disappeared", 500);
-      return existingResult(raced, normalized);
+      return existingResult(raced, normalized, attachments);
     }
   }
 
@@ -161,6 +190,7 @@ export async function sendNewEmailAttempt(
         to: normalized.to,
         subject: normalized.subject,
         text: normalized.text,
+        attachments: sendableAttachments(attachments),
         autoSubmitted: "auto-generated",
         attemptId: normalized.attemptId,
       }));
@@ -208,11 +238,17 @@ export async function sendNewEmailAttempt(
       normalized.text,
       now,
     ),
+    ...recordAttachmentStatements(env.DB, staged, messageId),
     env.DB.prepare(
       `UPDATE threads
        SET message_count = 1, snippet = ?, last_message_at = ?, is_read = 1
        WHERE id = ?`,
-    ).bind(snippet(normalized.text), now, conversationId),
+    ).bind(
+      snippet(normalized.text) ||
+        staged.map((attachment) => attachment.filename ?? "attachment").join(", ").slice(0, 140),
+      now,
+      conversationId,
+    ),
     env.DB.prepare(
       `UPDATE outbound_attempts
        SET status = 'sent', message_id = ?, error = NULL, updated_at = ?
@@ -245,12 +281,18 @@ async function markFailed(env: ComposeEnv, id: string, error: string): Promise<v
     .run();
 }
 
-function existingResult(existing: StoredAttempt, intent: NormalizedIntent): ComposeAttemptResult {
+function existingResult(
+  existing: StoredAttempt,
+  intent: NormalizedIntent,
+  attachments: NormalizedAttachment[],
+): ComposeAttemptResult {
   if (
     existing.mailbox_id !== intent.mailboxId ||
     existing.to_addresses !== JSON.stringify(intent.to) ||
     existing.subject !== intent.subject ||
     existing.text_body !== intent.text ||
+    attachmentFingerprint(parseStagedAttachments(existing.attachments)) !==
+      attachmentFingerprint(attachments) ||
     existing.actor_id !== (intent.actorId ?? null) ||
     existing.oauth_client_id !== (intent.oauthClientId ?? null)
   ) {

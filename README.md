@@ -39,7 +39,9 @@ new inbound Message ──► Web Push ──► subscribed browsers
   so new mail and replies are written to the same Conversations the Web UI
   reads. Stable idempotency keys prevent retries from sending twice.
 - **Attachments and Reply-To**: inbound files are stored in R2 and downloadable
-  from the Conversation; replies prefer the sender's `Reply-To` address.
+  from the Conversation; outbound replies and new mail can carry attachments
+  (≤3 MB total, staged in R2 alongside the attempt) and replies prefer the
+  sender's `Reply-To` address.
 - **Auto labels**: each Inbox can define labels (e.g. `guest-post`,
   `link-exchange`) with a natural-language match condition. New inbound mail is
   evaluated once with the `typesafe/jev` model and tagged with every matching
@@ -130,8 +132,9 @@ switch off removes all stored subscriptions.
 ## MCP server
 
 The MCP server is a separate Worker at `https://mcp.lessbutbetter.studio/v1`. It
-shares D1 and Cloudflare Email Sending with the Web Worker, but has no access to
-the Web API, assets, AI binding, queues, R2 objects, or Push secrets.
+shares D1, Cloudflare Email Sending, and the R2 bucket (for outbound attachment
+staging) with the Web Worker, but has no access to the Web API, assets, AI
+binding, queues, or Push secrets.
 
 It uses the stateless MCP `2026-07-28` handler and keeps compatibility with
 published 2025 stateless clients. Its tools are:

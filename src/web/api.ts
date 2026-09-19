@@ -149,12 +149,23 @@ export const markRead = (id: number) => request(`/threads/${id}/read`, { method:
 
 export const archiveThread = (id: number) => request(`/threads/${id}/archive`, { method: "POST" });
 
-export const sendReply = (id: number, text: string, attemptId: string, draftId?: number) =>
-  request<ReplyAttemptResult>(`/threads/${id}/reply`, {
+export const sendReply = (
+  id: number,
+  text: string,
+  attemptId: string,
+  draftId?: number,
+  attachments: File[] = [],
+) => {
+  const form = new FormData();
+  form.set("text", text);
+  form.set("attempt_id", attemptId);
+  if (draftId !== undefined) form.set("draft_id", String(draftId));
+  for (const file of attachments) form.append("attachments", file, file.name);
+  return request<ReplyAttemptResult>(`/threads/${id}/reply`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, draft_id: draftId, attempt_id: attemptId }),
+    body: form,
   });
+};
 
 export const discardDraft = (id: number) => request(`/drafts/${id}/discard`, { method: "POST" });
 

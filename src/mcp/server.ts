@@ -1,7 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import {
+  AttachmentInputError,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  type OutboundAttachmentInput,
+} from "../worker/email/attachments.ts";
 import { sendNewEmailAttempt, ComposeIntentError } from "../worker/email/compose.ts";
 import { ReplyIntentError, sendReplyAttempt } from "../worker/email/reply.ts";
+import type { SendEmailEnv } from "../worker/email/send.ts";
 import {
   ConversationInputError,
   getConversation,
@@ -12,18 +18,9 @@ import {
 import { entityId, parseEntityId } from "../shared/entity-ids.ts";
 import type { McpIdentity } from "./auth-types.ts";
 
-export interface McpEnv extends InboxDataEnv {
+export interface McpEnv extends InboxDataEnv, SendEmailEnv {
   MCP_DAILY_SEND_LIMIT?: string;
-  EMAIL: {
-    send(message: {
-      from: string | { email: string; name?: string };
-      to: string | Array<string | { email: string; name?: string }>;
-      subject: string;
-      text?: string;
-      html?: string;
-      headers?: Record<string, string>;
-    }): Promise<{ messageId: string }>;
-  };
+  RAW: R2Bucket;
 }
 
 const inboxSchema = z.object({
@@ -65,6 +62,51 @@ const idempotencyKey = z
   .max(80)
   .regex(/^[A-Za-z0-9._:-]+$/)
   .describe("A stable unique key. Reuse it when retrying the same send intent.");
+
+const attachmentInput = z.object({
+  filename: z.string().min(1).max(255),
+  content_type: z.string().min(1).max(255),
+  content_base64: z
+    .string()
+    .min(1)
+    .describe("Base64-encoded file content."),
+  disposition: z.enum(["attachment", "inline"]).default("attachment"),
+  content_id: z
+    .string()
+    .max(255)
+    .optional()
+    .describe("Only for inline attachments referenced as cid:<content_id>."),
+});
+
+const attachmentsInput = z
+  .array(attachmentInput)
+  .max(MAX_ATTACHMENTS_PER_MESSAGE)
+  .optional()
+  .describe("Optional file attachments. Combined size must stay under 3 MB.");
+
+function decodeAttachments(
+  attachments: z.infer<typeof attachmentInput>[] | undefined,
+): OutboundAttachmentInput[] {
+  return (attachments ?? []).map((attachment) => ({
+    filename: attachment.filename,
+    contentType: attachment.content_type,
+    disposition: attachment.disposition,
+    contentId: attachment.content_id ?? null,
+    content: decodeBase64(attachment.content_base64),
+  }));
+}
+
+function decodeBase64(value: string): Uint8Array {
+  let binary: string;
+  try {
+    binary = atob(value);
+  } catch {
+    throw new ToolInputError("Attachment content_base64 is not valid base64");
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): McpServer {
   const server = new McpServer({
@@ -204,12 +246,13 @@ export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): Mc
     {
       title: "Reply to conversation",
       description:
-        "Immediately send a plain-text reply to one reviewed inbound Message. Requires the exact Message id and reply_target returned by get_conversation; the call fails if the Conversation or recipient changed. The server records the outbound Message in the Web inbox and prevents duplicate sends with idempotency_key.",
+        "Immediately send a plain-text reply to one reviewed inbound Message, optionally with file attachments. Requires the exact Message id and reply_target returned by get_conversation; the call fails if the Conversation or recipient changed. The server records the outbound Message and its attachments in the Web inbox and prevents duplicate sends with idempotency_key.",
       inputSchema: z.object({
         conversation_id: z.string().describe("A Conversation id returned by search_conversations."),
         reply_to_message_id: z.string().describe("The latest inbound Message id returned by get_conversation."),
         expected_recipients: z.array(z.email()).min(1).max(20).describe("Copy reply_target from that inbound Message exactly."),
-        text: z.string().trim().min(1).max(100_000),
+        text: z.string().trim().max(100_000).default(""),
+        attachments: attachmentsInput,
         idempotency_key: idempotencyKey,
       }),
       outputSchema: sendResultSchema,
@@ -220,7 +263,7 @@ export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): Mc
         openWorldHint: true,
       },
     },
-    async ({ conversation_id, reply_to_message_id, expected_recipients, text, idempotency_key }) =>
+    async ({ conversation_id, reply_to_message_id, expected_recipients, text, attachments, idempotency_key }) =>
       toolCall(async () => {
         const conversationId = requireEntityId("conversation", conversation_id);
         const inboundMessageId = requireEntityId("message", reply_to_message_id);
@@ -228,6 +271,7 @@ export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): Mc
           attemptId: await durableAttemptId("mcp_reply", identity.sub, idempotency_key),
           threadId: conversationId,
           text,
+          attachments: decodeAttachments(attachments),
           sentBy: "agent",
           actorId: identity.sub,
           inboundMessageId,
@@ -243,12 +287,13 @@ export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): Mc
     {
       title: "Send email",
       description:
-        "Immediately send a new plain-text email from a registered Inbox. The sent Message and a new Conversation are recorded in the Web inbox. This has an external side effect; use a stable idempotency_key so retries never send duplicates.",
+        "Immediately send a new plain-text email from a registered Inbox, optionally with file attachments. The sent Message, its attachments, and a new Conversation are recorded in the Web inbox. This has an external side effect; use a stable idempotency_key so retries never send duplicates.",
       inputSchema: z.object({
         inbox_id: z.string().describe("The sending Inbox id returned by list_inboxes."),
         to: z.array(z.email()).length(1).describe("Exactly one recipient address."),
         subject: z.string().trim().min(1).max(500),
-        text: z.string().trim().min(1).max(100_000),
+        text: z.string().trim().max(100_000).default(""),
+        attachments: attachmentsInput,
         idempotency_key: idempotencyKey,
       }),
       outputSchema: sendResultSchema,
@@ -259,7 +304,7 @@ export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): Mc
         openWorldHint: true,
       },
     },
-    async ({ inbox_id, to, subject, text, idempotency_key }) =>
+    async ({ inbox_id, to, subject, text, attachments, idempotency_key }) =>
       toolCall(async () => {
         const inboxId = requireEntityId("inbox", inbox_id);
         const result = await sendNewEmailAttempt(env, {
@@ -268,6 +313,7 @@ export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): Mc
           to,
           subject,
           text,
+          attachments: decodeAttachments(attachments),
           actorId: identity.sub,
           dailySendLimit: dailySendLimit(env),
         });
@@ -292,7 +338,8 @@ async function toolCall<T extends Record<string, unknown>>(operation: () => Prom
       error instanceof ToolInputError ||
       error instanceof ConversationInputError ||
       error instanceof ReplyIntentError ||
-      error instanceof ComposeIntentError
+      error instanceof ComposeIntentError ||
+      error instanceof AttachmentInputError
     ) {
       return failure(domainError(error));
     }

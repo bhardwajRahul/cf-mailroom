@@ -3,11 +3,22 @@
  * Callers only see this interface, so swapping providers (e.g. Resend)
  * means reimplementing this one function.
  */
+/** Matches the `attachments` entries accepted by the send_email binding. */
+export interface OutgoingAttachment {
+  /** Raw text or binary content (never base64 on the Workers binding). */
+  content: string | ArrayBuffer | ArrayBufferView;
+  filename: string;
+  type: string;
+  disposition: "attachment" | "inline";
+  contentId?: string;
+}
+
 export interface OutgoingEmail {
   from: { address: string; name?: string };
   to: string[];
   subject: string;
   text: string;
+  attachments?: OutgoingAttachment[];
   /** RFC Message-ID of the message being replied to */
   inReplyTo?: string;
   /** Full References chain, oldest first */
@@ -26,6 +37,7 @@ export interface SendEmailEnv {
       subject: string;
       text?: string;
       html?: string;
+      attachments?: OutgoingAttachment[];
       headers?: Record<string, string>;
     }): Promise<{ messageId: string }>;
   };
@@ -53,6 +65,7 @@ export async function sendEmail(env: SendEmailEnv, mail: OutgoingEmail): Promise
     to: mail.to,
     subject: mail.subject,
     text: mail.text,
+    ...(mail.attachments?.length ? { attachments: mail.attachments } : {}),
     headers,
   });
 

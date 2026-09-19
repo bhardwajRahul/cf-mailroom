@@ -5,6 +5,13 @@ interface OutboundEmailBinding {
     subject: string;
     text?: string;
     html?: string;
+    attachments?: Array<{
+      content: string | ArrayBuffer | ArrayBufferView;
+      filename: string;
+      type: string;
+      disposition: "attachment" | "inline";
+      contentId?: string;
+    }>;
     headers?: Record<string, string>;
   }): Promise<{ messageId: string }>;
 }

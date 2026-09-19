@@ -1,15 +1,28 @@
 import type { ReplyAttemptResult } from "../../shared/types";
+import {
+  attachmentFingerprint,
+  normalizeAttachments,
+  parseStagedAttachments,
+  recordAttachmentStatements,
+  sendableAttachments,
+  stageAttachments,
+  type NormalizedAttachment,
+  type OutboundAttachmentInput,
+  type StagedAttachment,
+} from "./attachments.ts";
 import { sendEmail, type SendEmailEnv } from "./send.ts";
 import { claimDailySendBudget } from "./send-budget.ts";
 
 export interface ReplyEnv extends SendEmailEnv {
   DB: D1Database;
+  RAW: R2Bucket;
 }
 
 export interface ReplyIntent {
   attemptId: string;
   threadId: number;
   text: string;
+  attachments?: OutboundAttachmentInput[];
   draftId?: number;
   sentBy?: "human" | "agent";
   actorId?: string;
@@ -27,6 +40,7 @@ interface StoredAttempt {
   status: "pending" | "sending" | "sent" | "failed";
   text_body: string;
   to_addresses: string;
+  attachments: string;
   message_id: string | null;
   error: string | null;
   sent_by?: "human" | "agent";
@@ -38,24 +52,27 @@ export async function sendReplyAttempt(
   env: ReplyEnv,
   intent: ReplyIntent,
 ): Promise<ReplyAttemptResult> {
-  if (!intent.text.trim()) throw new ReplyIntentError("Reply text is required", 400);
+  const attachments = normalizeAttachments(intent.attachments ?? []);
+  if (!intent.text.trim() && attachments.length === 0) {
+    throw new ReplyIntentError("Reply text is required", 400);
+  }
   const existing = await getAttempt(env, intent.attemptId);
   if (existing) {
-    existingResult(existing, intent);
+    existingResult(existing, intent, attachments);
     if (existing.status === "sent" || existing.status === "failed") {
-      return existingResult(existing, intent);
+      return existingResult(existing, intent, attachments);
     }
     if (existing.status === "sending" && !existing.message_id) {
-      return existingResult(existing, intent);
+      return existingResult(existing, intent, attachments);
     }
   }
 
   const thread = await env.DB.prepare(
-    `SELECT t.id, t.subject, m.address AS mailbox_address
+    `SELECT t.id, t.mailbox_id, t.subject, m.address AS mailbox_address
      FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id WHERE t.id = ?`,
   )
     .bind(intent.threadId)
-    .first<{ id: number; subject: string; mailbox_address: string }>();
+    .first<{ id: number; mailbox_id: number; subject: string; mailbox_address: string }>();
   if (!thread) throw new ReplyIntentError("Conversation not found", 404);
 
   const lastInbound = await env.DB.prepare(
@@ -109,13 +126,23 @@ export async function sendReplyAttempt(
     );
   }
 
+  let staged: StagedAttachment[] = existing
+    ? parseStagedAttachments(existing.attachments)
+    : [];
+
   if (!existing) {
     try {
+      staged = await stageAttachments(
+        env.RAW,
+        thread.mailbox_id,
+        intent.attemptId,
+        attachments,
+      );
       await env.DB.prepare(
         `INSERT INTO reply_attempts
            (id, thread_id, inbound_message_id, draft_id, status, text_body, to_addresses,
-            sent_by, actor_id, oauth_client_id)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
+            attachments, sent_by, actor_id, oauth_client_id)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
       )
         .bind(
           intent.attemptId,
@@ -124,6 +151,7 @@ export async function sendReplyAttempt(
           intent.draftId ?? null,
           intent.text.trim(),
           JSON.stringify(recipients),
+          JSON.stringify(staged),
           intent.sentBy ?? (intent.draftId ? "agent" : "human"),
           intent.actorId ?? null,
           intent.oauthClientId ?? null,
@@ -147,7 +175,7 @@ export async function sendReplyAttempt(
     } catch (error) {
       if (error instanceof ReplyIntentError) throw error;
       const raced = await getAttempt(env, intent.attemptId);
-      if (raced) return existingResult(raced, intent);
+      if (raced) return existingResult(raced, intent, attachments);
       throw error;
     }
   }
@@ -163,7 +191,7 @@ export async function sendReplyAttempt(
     if (!claimed) {
       const raced = await getAttempt(env, intent.attemptId);
       if (!raced) throw new ReplyIntentError("Reply Attempt disappeared", 500);
-      return existingResult(raced, intent);
+      return existingResult(raced, intent, attachments);
     }
   }
 
@@ -181,6 +209,7 @@ export async function sendReplyAttempt(
         to: recipients,
         subject,
         text: intent.text.trim(),
+        attachments: sendableAttachments(attachments),
         inReplyTo: lastInbound.message_id,
         references,
         autoSubmitted:
@@ -222,6 +251,12 @@ export async function sendReplyAttempt(
   }
 
   const now = new Date().toISOString();
+  const snippet =
+    intent.text.replace(/\s+/g, " ").trim().slice(0, 140) ||
+    staged
+      .map((attachment) => attachment.filename ?? "attachment")
+      .join(", ")
+      .slice(0, 140);
   const statements: D1PreparedStatement[] = [
     env.DB.prepare(
       `INSERT INTO messages
@@ -242,11 +277,12 @@ export async function sendReplyAttempt(
       intent.text.trim(),
       now,
     ),
+    ...recordAttachmentStatements(env.DB, staged, messageId),
     env.DB.prepare(
       `UPDATE threads
        SET snippet = ?, message_count = message_count + 1, last_message_at = ?, is_read = 1
        WHERE id = ?`,
-    ).bind(intent.text.replace(/\s+/g, " ").trim().slice(0, 140), now, intent.threadId),
+    ).bind(snippet, now, intent.threadId),
     env.DB.prepare(
       `UPDATE reply_attempts
        SET status = 'sent', message_id = ?, error = NULL, updated_at = ?
@@ -276,12 +312,18 @@ async function getAttempt(env: ReplyEnv, id: string): Promise<StoredAttempt | nu
     .first<StoredAttempt>();
 }
 
-function existingResult(existing: StoredAttempt, intent: ReplyIntent): ReplyAttemptResult {
+function existingResult(
+  existing: StoredAttempt,
+  intent: ReplyIntent,
+  attachments: NormalizedAttachment[],
+): ReplyAttemptResult {
   const sentBy = intent.sentBy ?? (intent.draftId ? "agent" : "human");
   if (
     existing.thread_id !== intent.threadId ||
     existing.text_body !== intent.text.trim() ||
     existing.draft_id !== (intent.draftId ?? null) ||
+    attachmentFingerprint(parseStagedAttachments(existing.attachments)) !==
+      attachmentFingerprint(attachments) ||
     (intent.inboundMessageId !== undefined &&
       existing.inbound_message_id !== intent.inboundMessageId) ||
     (intent.expectedRecipients !== undefined &&

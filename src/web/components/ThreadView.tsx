@@ -29,6 +29,7 @@ import {
   PaperclipIcon,
   SendIcon,
   SparklesIcon,
+  XIcon,
 } from "./Icons";
 import { LinkifiedText } from "./LinkifiedText";
 
@@ -39,9 +40,11 @@ export function ThreadView(props: {
 }) {
   const queryClient = useQueryClient();
   const [replyText, setReplyText] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [sendNotice, setSendNotice] = useState<string | null>(null);
   const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const attemptIds = useRef(new Map<string, { text: string; id: string }>());
 
   const detail = useQuery({
@@ -59,6 +62,7 @@ export function ThreadView(props: {
       queryClient.invalidateQueries({ queryKey: ["mailboxes"] });
     });
     setReplyText("");
+    setPendingFiles([]);
     setSendNotice(null);
     setFailedAttemptKey(null);
     attemptIds.current.clear();
@@ -79,10 +83,19 @@ export function ThreadView(props: {
   };
 
   const reply = useMutation({
-    mutationFn: (args: { text: string; attemptId: string; attemptKey: string; draftId?: number }) =>
-      sendReply(props.threadId, args.text, args.attemptId, args.draftId),
+    mutationFn: (args: {
+      text: string;
+      attemptId: string;
+      attemptKey: string;
+      draftId?: number;
+      files?: File[];
+    }) =>
+      sendReply(props.threadId, args.text, args.attemptId, args.draftId, args.files ?? []),
     onSuccess: (result, args) => {
-      if (result.status === "sent" && args.draftId === undefined) setReplyText("");
+      if (result.status === "sent" && args.draftId === undefined) {
+        setReplyText("");
+        setPendingFiles([]);
+      }
       setFailedAttemptKey(null);
       setSendNotice(
         result.status === "sending"
@@ -165,9 +178,21 @@ export function ThreadView(props: {
 
   const submitReply = () => {
     const text = replyText.trim();
-    if (text && !reply.isPending) {
-      reply.mutate({ text, attemptId: attemptFor("manual", text), attemptKey: "manual" });
+    if ((text || pendingFiles.length > 0) && !reply.isPending) {
+      const fingerprint = `${text} ${pendingFiles.map((file) => `${file.name}:${file.size}`).join(",")}`;
+      reply.mutate({
+        text,
+        files: pendingFiles,
+        attemptId: attemptFor("manual", fingerprint),
+        attemptKey: "manual",
+      });
     }
+  };
+
+  const addFiles = (list: FileList | null) => {
+    if (!list) return;
+    setPendingFiles((current) => [...current, ...list].slice(0, 10));
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
@@ -274,16 +299,65 @@ export function ThreadView(props: {
               rows={3}
               className="min-h-[80px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-[13px] shadow-none focus-visible:ring-0"
             />
+            {pendingFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-3.5 pb-1" aria-label="Attachments to send">
+                {pendingFiles.map((file, index) => (
+                  <span
+                    key={`${file.name}-${index}`}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-[11px] text-foreground"
+                  >
+                    <PaperclipIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 truncate">{file.name}</span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {formatFileSize(file.size)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${file.name}`}
+                      className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={() =>
+                        setPendingFiles((current) =>
+                          current.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
+                      <XIcon className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex items-center justify-end px-3 pb-3 sm:justify-between">
               <span className="hidden text-[10px] text-muted-foreground sm:inline">⌘ Enter to send</span>
-              <Button
-                onClick={submitReply}
-                disabled={!replyText.trim() || reply.isPending}
-                size="sm"
-              >
-                <SendIcon className="h-3.5 w-3.5" />
-                {reply.isPending ? "Sending…" : "Send reply"}
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => addFiles(event.target.files)}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  aria-label="Attach files"
+                  disabled={reply.isPending}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <PaperclipIcon className="h-4 w-4" />
+                </Button>
+                <Button
+                  onClick={submitReply}
+                  disabled={
+                    (!replyText.trim() && pendingFiles.length === 0) || reply.isPending
+                  }
+                  size="sm"
+                >
+                  <SendIcon className="h-3.5 w-3.5" />
+                  {reply.isPending ? "Sending…" : "Send reply"}
+                </Button>
+              </div>
             </div>
           </Card>
           {reply.isError && (

@@ -1,5 +1,9 @@
 import { Hono } from "hono";
 import { enqueueDraftRun } from "../agent/runs";
+import {
+  AttachmentInputError,
+  type OutboundAttachmentInput,
+} from "../email/attachments";
 import { ReplyIntentError, sendReplyAttempt } from "../email/reply";
 import {
   deleteInbox,
@@ -701,30 +705,67 @@ api.post("/threads/:id/reply", async (c) => {
   const threadId = parsePositiveId(c.req.param("id"));
   if (threadId === null) return c.json({ error: "Invalid conversation" }, 400);
 
-  const { text, draft_id, attempt_id } = await c.req.json<{
-    text: string;
-    draft_id?: number;
-    attempt_id?: string;
-  }>();
-  if (!text?.trim()) return c.json({ error: "text is required" }, 400);
-  if (!attempt_id || attempt_id.length > 120 || !/^[a-zA-Z0-9_-]+$/.test(attempt_id)) {
+  let text = "";
+  let draftId: number | undefined;
+  let attemptId = "";
+  const attachments: OutboundAttachmentInput[] = [];
+  if ((c.req.header("content-type") ?? "").includes("multipart/form-data")) {
+    const form = await c.req.formData();
+    const formText = form.get("text");
+    const formDraft = form.get("draft_id");
+    const formAttempt = form.get("attempt_id");
+    text = typeof formText === "string" ? formText : "";
+    attemptId = typeof formAttempt === "string" ? formAttempt : "";
+    if (formDraft !== null && formDraft !== "") {
+      const parsed = Number(formDraft);
+      draftId = Number.isInteger(parsed) ? parsed : Number.NaN;
+    }
+    for (const value of form.getAll("attachments")) {
+      if (value instanceof File) {
+        attachments.push({
+          filename: value.name,
+          contentType: value.type,
+          disposition: "attachment",
+          content: await value.arrayBuffer(),
+        });
+      }
+    }
+  } else {
+    const body = await c.req.json<{
+      text?: string;
+      draft_id?: number;
+      attempt_id?: string;
+    }>();
+    text = body.text ?? "";
+    draftId = body.draft_id;
+    attemptId = body.attempt_id ?? "";
+  }
+
+  if (!text.trim() && attachments.length === 0) {
+    return c.json({ error: "text is required" }, 400);
+  }
+  if (!attemptId || attemptId.length > 120 || !/^[a-zA-Z0-9_-]+$/.test(attemptId)) {
     return c.json({ error: "attempt_id is required" }, 400);
   }
-  if (draft_id !== undefined && (!Number.isInteger(draft_id) || draft_id <= 0)) {
+  if (draftId !== undefined && (!Number.isInteger(draftId) || draftId <= 0)) {
     return c.json({ error: "invalid draft_id" }, 400);
   }
 
   try {
     const result = await sendReplyAttempt(c.env, {
-      attemptId: attempt_id,
+      attemptId,
       threadId,
       text,
-      draftId: draft_id,
+      attachments,
+      draftId,
     });
     if (result.status === "failed") return c.json(result, 502);
     if (result.status === "pending" || result.status === "sending") return c.json(result, 202);
     return c.json(result);
   } catch (error) {
+    if (error instanceof AttachmentInputError) {
+      return c.json({ error: error.message }, 400);
+    }
     if (error instanceof ReplyIntentError) {
       if (error.status === 404) return c.json({ error: error.message }, 404);
       if (error.status === 409) return c.json({ error: error.message }, 409);

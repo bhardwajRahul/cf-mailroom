@@ -30,6 +30,12 @@
       "name": "EMAIL"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "RAW",
+      "bucket_name": "agentic-inbox-raw"
+    }
+  ],
   "vars": {
     "TEAM_DOMAIN": "https://lessbutbetter.cloudflareaccess.com",
     "POLICY_AUD": "1c0b0e684fe033019bc88dc2d3a7f2a7460dce08ffe1217a660544ab75c189eb",

@@ -29,6 +29,7 @@ class FakeDb {
   attempts = new Map();
   threads = new Map();
   messages = [];
+  messageAttachments = [];
   nextThread = 1;
 
   prepare(sql) {
@@ -69,10 +70,18 @@ class FakeDb {
         to_addresses: args[2],
         subject: args[3],
         text_body: args[4],
-        actor_id: args[5],
-        oauth_client_id: args[6],
+        attachments: args[5],
+        actor_id: args[6],
+        oauth_client_id: args[7],
         message_id: null,
         error: null,
+      });
+    } else if (sql.includes("INSERT INTO attachments")) {
+      this.messageAttachments.push({
+        filename: args[0],
+        content_type: args[1],
+        r2_key: args[5],
+        rfc_message_id: args[6],
       });
     } else if (sql.includes("SET thread_id = ?") && !sql.includes("status = 'failed'")) {
       this.attempts.get(args[2]).thread_id = args[0];
@@ -98,19 +107,27 @@ class FakeDb {
 
 function makeFixture() {
   const db = new FakeDb();
-  let sends = 0;
+  const sent = [];
+  const objects = new Map();
   return {
     db,
+    objects,
     env: {
       DB: db,
+      RAW: {
+        async put(key, value) {
+          objects.set(key, value);
+        },
+      },
       EMAIL: {
-        async send() {
-          sends += 1;
+        async send(message) {
+          sent.push(message);
           return { messageId: "outbound@example.com" };
         },
       },
     },
-    sends: () => sends,
+    sends: () => sent.length,
+    sent: () => sent,
   };
 }
 
@@ -177,4 +194,46 @@ test("a provider-accepted Send Attempt finalizes without sending again", async (
   assert.equal(result.status, "sent");
   assert.equal(fixture.sends(), 0);
   assert.equal(fixture.db.messages.length, 1);
+});
+
+test("a new email with attachments is staged, sent, and recorded", async () => {
+  const fixture = makeFixture();
+  const withAttachment = {
+    ...intent,
+    attemptId: "mcp_send_attach",
+    attachments: [
+      { filename: "invoice.pdf", contentType: "application/pdf", content: new Uint8Array([37, 80]) },
+    ],
+  };
+
+  const first = await sendNewEmailAttempt(fixture.env, withAttachment);
+  const replay = await sendNewEmailAttempt(fixture.env, withAttachment);
+
+  assert.equal(first.status, "sent");
+  assert.deepEqual(replay, first);
+  assert.equal(fixture.sends(), 1);
+  assert.equal(fixture.sent()[0].attachments[0].filename, "invoice.pdf");
+  assert.equal(fixture.db.messageAttachments.length, 1);
+  assert.ok(
+    [...fixture.objects.keys()][0].startsWith("attachments/1/outbound/mcp_send_attach/"),
+  );
+});
+
+test("a Send Attempt id cannot be reused with different attachments", async () => {
+  const fixture = makeFixture();
+  await sendNewEmailAttempt(fixture.env, {
+    ...intent,
+    attemptId: "mcp_send_att_conflict",
+    attachments: [{ filename: "a.txt", contentType: "text/plain", content: "a" }],
+  });
+
+  await assert.rejects(
+    sendNewEmailAttempt(fixture.env, {
+      ...intent,
+      attemptId: "mcp_send_att_conflict",
+      attachments: [{ filename: "b.txt", contentType: "text/plain", content: "b" }],
+    }),
+    (error) => error instanceof ComposeIntentError && error.status === 409,
+  );
+  assert.equal(fixture.sends(), 1);
 });

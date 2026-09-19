@@ -24,6 +24,7 @@ class FakeStatement {
 
 class FakeDb {
   attempts = new Map();
+  messageAttachments = [];
   allowBudget = true;
 
   prepare(sql) {
@@ -32,8 +33,8 @@ class FakeDb {
 
   async first(sql, args) {
     if (sql.includes("SELECT * FROM reply_attempts")) return this.attempts.get(args[0]) ?? null;
-    if (sql.includes("SELECT t.id, t.subject")) {
-      return { id: 1, subject: "Help", mailbox_address: "support@example.com" };
+    if (sql.includes("SELECT t.id, t.mailbox_id, t.subject")) {
+      return { id: 1, mailbox_id: 1, subject: "Help", mailbox_address: "support@example.com" };
     }
     if (sql.includes("SELECT id, message_id, from_address")) {
       const requestedMessageId = args[1];
@@ -69,11 +70,22 @@ class FakeDb {
         status: "pending",
         text_body: args[4],
         to_addresses: args[5],
-        sent_by: args[6],
-        actor_id: args[7],
-        oauth_client_id: args[8],
+        attachments: args[6],
+        sent_by: args[7],
+        actor_id: args[8],
+        oauth_client_id: args[9],
         message_id: null,
         error: null,
+      });
+    } else if (sql.includes("INSERT INTO attachments")) {
+      this.messageAttachments.push({
+        filename: args[0],
+        content_type: args[1],
+        size: args[2],
+        disposition: args[3],
+        content_id: args[4],
+        r2_key: args[5],
+        rfc_message_id: args[6],
       });
     } else if (sql.includes("SET status = 'failed'")) {
       const attemptId = args.length === 1 ? args[0] : args[1];
@@ -96,19 +108,27 @@ class FakeDb {
 
 function makeEnv({ fail = false } = {}) {
   const db = new FakeDb();
-  let sends = 0;
+  const sent = [];
+  const objects = new Map();
   return {
     env: {
       DB: db,
+      RAW: {
+        async put(key, value) {
+          objects.set(key, value);
+        },
+      },
       EMAIL: {
-        async send() {
-          sends += 1;
+        async send(message) {
+          sent.push(message);
           if (fail) throw new Error("provider unavailable");
           return { messageId: "outbound@example.com" };
         },
       },
     },
-    sends: () => sends,
+    sends: () => sent.length,
+    sent: () => sent,
+    objects,
   };
 }
 
@@ -247,4 +267,66 @@ test("the daily send budget blocks an agent before provider delivery", async () 
     (error) => error instanceof ReplyIntentError && error.status === 429,
   );
   assert.equal(fixture.sends(), 0);
+});
+
+test("a reply with attachments is staged in R2, sent, and recorded once", async () => {
+  const fixture = makeEnv();
+  const intent = {
+    attemptId: "attempt-att",
+    threadId: 1,
+    text: "See attached",
+    attachments: [
+      { filename: "log.txt", contentType: "text/plain", content: "hello" },
+    ],
+  };
+
+  const first = await sendReplyAttempt(fixture.env, intent);
+  const replay = await sendReplyAttempt(fixture.env, intent);
+
+  assert.equal(first.status, "sent");
+  assert.deepEqual(replay, first);
+  assert.equal(fixture.sends(), 1);
+  assert.equal(fixture.sent()[0].attachments.length, 1);
+  assert.equal(fixture.sent()[0].attachments[0].filename, "log.txt");
+  assert.equal(fixture.sent()[0].attachments[0].type, "text/plain");
+  assert.equal(fixture.env.DB.messageAttachments.length, 1);
+  assert.equal(fixture.env.DB.messageAttachments[0].filename, "log.txt");
+  const [r2Key] = [...fixture.objects.keys()];
+  assert.ok(r2Key.startsWith("attachments/1/outbound/attempt-att/"));
+  assert.equal(fixture.env.DB.messageAttachments[0].r2_key, r2Key);
+});
+
+test("an attachment-only reply sends without text", async () => {
+  const fixture = makeEnv();
+  const result = await sendReplyAttempt(fixture.env, {
+    attemptId: "attempt-file-only",
+    threadId: 1,
+    text: "",
+    attachments: [
+      { filename: "doc.pdf", contentType: "application/pdf", content: new Uint8Array([1, 2]) },
+    ],
+  });
+  assert.equal(result.status, "sent");
+  assert.equal(fixture.sends(), 1);
+});
+
+test("an attempt id cannot be reused with different attachments", async () => {
+  const fixture = makeEnv();
+  await sendReplyAttempt(fixture.env, {
+    attemptId: "attempt-att-2",
+    threadId: 1,
+    text: "Here",
+    attachments: [{ filename: "a.txt", contentType: "text/plain", content: "a" }],
+  });
+
+  await assert.rejects(
+    sendReplyAttempt(fixture.env, {
+      attemptId: "attempt-att-2",
+      threadId: 1,
+      text: "Here",
+      attachments: [{ filename: "b.txt", contentType: "text/plain", content: "b" }],
+    }),
+    (error) => error instanceof ReplyIntentError && error.status === 409,
+  );
+  assert.equal(fixture.sends(), 1);
 });
