@@ -53,9 +53,8 @@ new inbound Message ──► Web Push ──► subscribed browsers
 ```sh
 npm install
 
-# 0. Create local configs from the examples (the real files are gitignored)
-cp wrangler.example.jsonc wrangler.jsonc
-cp wrangler.dev.example.jsonc wrangler.dev.jsonc
+# 0. Fill in your database_id in wrangler.jsonc / wrangler.dev.jsonc
+#    and create the gitignored local files
 cp wrangler.mcp.example.jsonc wrangler.mcp.jsonc
 cp .dev.vars.example .dev.vars
 
@@ -171,8 +170,10 @@ variable to `false` to remove write tools from every client immediately.
 
 ### Configure OAuth
 
-1. Create a KV namespace and bind it as `OAUTH_KV` in `wrangler.mcp.jsonc`.
-   OAuth clients, grants, authorization codes, and tokens live there.
+1. Copy `wrangler.mcp.example.jsonc` to `wrangler.mcp.jsonc` (gitignored — it
+   holds your Access AUD, owner emails, and hostnames). Create a KV namespace
+   and bind it as `OAUTH_KV`. OAuth clients, grants, authorization codes, and
+   tokens live there.
 2. Deploy the MCP Worker once with `npm run deploy:mcp` so its custom hostname
    exists.
 3. In Cloudflare Zero Trust, create a Self-hosted Access application for the

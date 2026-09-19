@@ -1,6 +1,6 @@
-// Copy to wrangler.dev.jsonc and fill in your database_id.
 // Local-dev-only config: no `ai` / `send_email` bindings, because both force a
-// remote proxy session and neither is needed for UI iteration.
+// remote proxy session (blocked by Cloudflare Access on this account) and
+// neither is needed for UI iteration. Deploys use wrangler.jsonc.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "agentic-inbox",
@@ -14,8 +14,7 @@
     {
       "binding": "DB",
       "database_name": "agentic-inbox",
-      // Any value works for --local; use the real id if you also query remote.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "c4bee2a2-df80-45f0-9df5-4a1d9804d0a0",
       "migrations_dir": "migrations"
     }
   ],

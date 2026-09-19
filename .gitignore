@@ -9,8 +9,6 @@ dist/
 *.tsbuildinfo
 .lody/
 
-# Deployment configs contain account-specific resource ids and domains.
-# Copy the matching *.example.jsonc file and fill in your own values.
-wrangler.jsonc
-wrangler.dev.jsonc
+# The MCP Worker config contains owner-specific values (Access AUD, allowed
+# emails, hostnames). Copy wrangler.mcp.example.jsonc and fill in your own.
 wrangler.mcp.jsonc
