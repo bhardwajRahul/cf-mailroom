@@ -53,6 +53,12 @@ new inbound Message ──► Web Push ──► subscribed browsers
 ```sh
 npm install
 
+# 0. Create local configs from the examples (the real files are gitignored)
+cp wrangler.example.jsonc wrangler.jsonc
+cp wrangler.dev.example.jsonc wrangler.dev.jsonc
+cp wrangler.mcp.example.jsonc wrangler.mcp.jsonc
+cp .dev.vars.example .dev.vars
+
 # 1. Create resources
 wrangler d1 create agentic-inbox     # paste database_id into wrangler.jsonc
 wrangler r2 bucket create agentic-inbox-raw
@@ -131,7 +137,8 @@ switch off removes all stored subscriptions.
 
 ## MCP server
 
-The MCP server is a separate Worker at `https://mcp.lessbutbetter.studio/v1`. It
+The MCP server is a separate Worker on its own hostname (e.g.
+`https://mcp.example.com/v1`). It
 shares D1, Cloudflare Email Sending, and the R2 bucket (for outbound attachment
 staging) with the Web Worker, but has no access to the Web API, assets, AI
 binding, queues, or Push secrets.
@@ -169,7 +176,7 @@ variable to `false` to remove write tools from every client immediately.
 2. Deploy the MCP Worker once with `npm run deploy:mcp` so its custom hostname
    exists.
 3. In Cloudflare Zero Trust, create a Self-hosted Access application for the
-   exact destination `mcp.lessbutbetter.studio/authorize`. Restrict its Allow
+   exact destination `<MCP_HOSTNAME>/authorize`. Restrict its Allow
    policy to the instance owner's email and leave **Managed OAuth off**. The
    discovery, client registration, token, revocation, and `/v1` endpoints must
    remain publicly reachable; only the interactive consent page is behind

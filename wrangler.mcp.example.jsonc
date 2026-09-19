@@ -1,0 +1,59 @@
+// Copy to wrangler.mcp.jsonc and fill in your own values. See README "Configure OAuth".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentic-inbox-mcp",
+  "workers_dev": false,
+  "main": "src/mcp/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "routes": [
+    {
+      // The dedicated hostname for your MCP Worker, e.g. mcp.example.com
+      "pattern": "mcp.example.com",
+      "custom_domain": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      // Same database as the Web Worker.
+      "database_name": "agentic-inbox",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      // Create with: wrangler kv namespace create agentic-inbox-mcp-oauth
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RAW",
+      "bucket_name": "agentic-inbox-raw"
+    }
+  ],
+  "vars": {
+    // Cloudflare Zero Trust team domain, e.g. https://your-team.cloudflareaccess.com
+    "TEAM_DOMAIN": "https://your-team.cloudflareaccess.com",
+    // AUD tag of the Access application protecting <MCP_HOSTNAME>/authorize
+    "POLICY_AUD": "0000000000000000000000000000000000000000000000000000000000000000",
+    // Comma-separated emails allowed to authorize MCP clients (the workspace owner)
+    "MCP_ALLOWED_EMAILS": "owner@example.com",
+    "MCP_SEND_ENABLED": "true",
+    "MCP_DAILY_SEND_LIMIT": "100",
+    "MCP_HOSTNAME": "mcp.example.com",
+    // Public URL of the deployed Web Worker
+    "WEB_APP_URL": "https://agentic-inbox.your-subdomain.workers.dev"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

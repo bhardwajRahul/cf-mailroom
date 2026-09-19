@@ -1,0 +1,5 @@
+# Local secrets for `npm run dev`. Copy to .dev.vars — never commit real values.
+# Generate a VAPID pair with: npm run vapid:generate
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_JWK=
+VAPID_SUBJECT=mailto:admin@example.com

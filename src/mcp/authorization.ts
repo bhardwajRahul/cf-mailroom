@@ -75,7 +75,7 @@ export const authorizationHandler: ExportedHandler<AuthorizationEnv> = {
       return consentPage(oauthRequest, client, identity.email, transactionToken);
     }
 
-    const expectedOrigin = `https://${env.MCP_HOSTNAME ?? "mcp.lessbutbetter.studio"}`;
+    const expectedOrigin = `https://${env.MCP_HOSTNAME ?? "mcp.example.com"}`;
     let submission: Awaited<ReturnType<typeof parseAuthorizationSubmission>>;
     try {
       submission = await parseAuthorizationSubmission(request, {

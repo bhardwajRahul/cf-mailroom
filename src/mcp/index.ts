@@ -19,21 +19,26 @@ interface Env extends McpEnv, AuthorizationEnv {
   MCP_SEND_ENABLED?: string;
 }
 
-const MCP_ORIGIN = "https://mcp.lessbutbetter.studio";
-const MCP_RESOURCE = `${MCP_ORIGIN}${MCP_ROUTE}`;
+const DEFAULT_MCP_HOSTNAME = "mcp.example.com";
+
+function mcpOrigin(env: { MCP_HOSTNAME?: string }): string {
+  return `https://${env.MCP_HOSTNAME ?? DEFAULT_MCP_HOSTNAME}`;
+}
 
 class McpApiHandler extends WorkerEntrypoint<Env, OAuthGrantProps> {
   async fetch(request: Request): Promise<Response> {
     const authorization = request.headers.get("Authorization");
     const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+    const origin = mcpOrigin(this.env);
     const summary = token
       ? await this.env.OAUTH_PROVIDER.unwrapToken<OAuthGrantProps>(token)
       : null;
     if (!token || !summary) {
-      return oauthError(401, "invalid_token", "Invalid access token");
+      return oauthError(origin, 401, "invalid_token", "Invalid access token");
     }
     if (!summary.scope.includes(MCP_READ_SCOPE)) {
       return oauthError(
+        origin,
         403,
         "insufficient_scope",
         `The ${MCP_READ_SCOPE} scope is required`,
@@ -47,7 +52,7 @@ class McpApiHandler extends WorkerEntrypoint<Env, OAuthGrantProps> {
       props.sub !== summary.userId ||
       !sameScopes(props.scopes, summary.scope)
     ) {
-      return oauthError(401, "invalid_token", "Access token context is inconsistent");
+      return oauthError(origin, 401, "invalid_token", "Access token context is inconsistent");
     }
 
     const identity = {
@@ -58,7 +63,7 @@ class McpApiHandler extends WorkerEntrypoint<Env, OAuthGrantProps> {
         summary.scope.includes(MCP_SEND_SCOPE) &&
         this.env.MCP_SEND_ENABLED === "true",
     };
-    const hostname = this.env.MCP_HOSTNAME ?? "mcp.lessbutbetter.studio";
+    const hostname = new URL(origin).hostname;
     const handler = createMcpHandler(
       () => createAgenticInboxServer(this.env, identity),
       {
@@ -99,6 +104,7 @@ function tokenResource(summary: TokenSummary<OAuthGrantProps>): URL | undefined 
 }
 
 function oauthError(
+  origin: string,
   status: number,
   error: string,
   description: string,
@@ -108,7 +114,7 @@ function oauthError(
     'Bearer realm="Agentic Inbox"',
     `error="${error}"`,
     `error_description="${description}"`,
-    `resource_metadata="${MCP_ORIGIN}/.well-known/oauth-protected-resource/v1"`,
+    `resource_metadata="${origin}/.well-known/oauth-protected-resource/v1"`,
     ...(scope ? [`scope="${scope}"`] : []),
   ].join(", ");
   return Response.json(
@@ -123,7 +129,12 @@ function oauthError(
   );
 }
 
-const oauthProvider = new OAuthProvider<Env>({
+let oauthProvider: OAuthProvider<Env> | undefined;
+
+function getOAuthProvider(env: Env): OAuthProvider<Env> {
+  if (oauthProvider) return oauthProvider;
+  const origin = mcpOrigin(env);
+  oauthProvider = new OAuthProvider<Env>({
   apiRoute: MCP_ROUTE,
   apiHandler: McpApiHandler,
   defaultHandler: authorizationHandler,
@@ -133,8 +144,8 @@ const oauthProvider = new OAuthProvider<Env>({
   clientIdMetadataDocumentEnabled: true,
   scopesSupported: [MCP_READ_SCOPE, MCP_SEND_SCOPE],
   resourceMetadata: {
-    resource: MCP_RESOURCE,
-    authorization_servers: [MCP_ORIGIN],
+    resource: `${origin}${MCP_ROUTE}`,
+    authorization_servers: [origin],
     scopes_supported: [MCP_READ_SCOPE, MCP_SEND_SCOPE],
     bearer_methods_supported: ["header"],
     resource_name: "Agentic Inbox",
@@ -161,14 +172,16 @@ const oauthProvider = new OAuthProvider<Env>({
       internalReason: internal?.reason,
     });
   },
-});
+  });
+  return oauthProvider;
+}
 
 const worker: ExportedHandler<Env> = {
   fetch(request, env, ctx) {
     if (isRejectedMcpRouteLookalike(new URL(request.url).pathname)) {
       return new Response("Not found", { status: 404 });
     }
-    return oauthProvider.fetch(request, env, ctx);
+    return getOAuthProvider(env).fetch(request, env, ctx);
   },
 };
 

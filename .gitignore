@@ -6,4 +6,11 @@ dist/
 .dev.vars
 .DS_Store
 *.log
-tsconfig.mcp.tsbuildinfo
+*.tsbuildinfo
+.lody/
+
+# Deployment configs contain account-specific resource ids and domains.
+# Copy the matching *.example.jsonc file and fill in your own values.
+wrangler.jsonc
+wrangler.dev.jsonc
+wrangler.mcp.jsonc

@@ -8,7 +8,7 @@ import {
   serializeAuthorizationRequest,
 } from "../src/mcp/authorization-security.ts";
 
-const ORIGIN = "https://mcp.lessbutbetter.studio";
+const ORIGIN = "https://mcp.example.com";
 const TRANSACTION = "0123456789abcdef".repeat(4);
 const AUTH_REQUEST = {
   responseType: "code",
@@ -18,8 +18,8 @@ const AUTH_REQUEST = {
   state: "client-state",
   codeChallenge: "pkce-challenge",
   codeChallengeMethod: "S256",
-  resource: ["https://mcp.lessbutbetter.studio/v1"],
-  issuer: "https://mcp.lessbutbetter.studio",
+  resource: ["https://mcp.example.com/v1"],
+  issuer: "https://mcp.example.com",
 };
 
 function submission(
@@ -125,8 +125,8 @@ test("request snapshots bind all values used to complete authorization", () => {
     scope: ["inbox.read", "inbox.send"],
     codeChallenge: "pkce-challenge",
     codeChallengeMethod: "S256",
-    resource: ["https://mcp.lessbutbetter.studio/v1"],
-    issuer: "https://mcp.lessbutbetter.studio",
+    resource: ["https://mcp.example.com/v1"],
+    issuer: "https://mcp.example.com",
   });
 });
 
