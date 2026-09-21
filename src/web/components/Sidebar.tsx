@@ -15,13 +15,15 @@ export function Sidebar(props: {
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r bg-background lg:flex">
       <div className="flex h-14 items-center gap-2 px-3">
-        <img
-          src="/brand/agentic-inbox.png"
-          alt=""
-          width={28}
-          height={28}
-          className="h-7 w-7 shrink-0 object-contain dark:invert"
-        />
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+          <img
+            src="/brand/agentic-inbox.png"
+            alt=""
+            width={20}
+            height={20}
+            className="h-5 w-5 object-contain dark:invert"
+          />
+        </span>
         <p className="min-w-0 truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">
           Agentic Inbox
         </p>
