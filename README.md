@@ -7,6 +7,17 @@ email can be triaged and answered autonomously — the agent looks things up
 
 Runs entirely on Cloudflare: Workers, Email Routing, D1, R2, and Web Push.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wong2/agentic-inbox)
+
+Deploy the web app into your own Cloudflare account, with storage and drafting
+queues provisioned for you and database migrations applied automatically.
+Then protect it with Cloudflare Access and connect your email domain.
+The MCP server and browser notifications are optional, separate setup steps.
+
+**Start here: [Cloudflare deployment guide](docs/deployment.md).** You need a
+domain on Cloudflare, R2 enabled, and Workers Paid for outbound email. The deploy
+button works for other users once this repository is public.
+
 ## Architecture
 
 ```
@@ -50,40 +61,17 @@ new inbound Message ──► Web Push ──► subscribed browsers
 
 ## Setup
 
-```sh
-npm install
+For production, use the [deployment guide](docs/deployment.md). For local development
+(Node.js 22.18+ or 24+):
 
-# 0. Fill in your database_id in wrangler.jsonc / wrangler.dev.jsonc
-#    and create the gitignored local files
-cp wrangler.mcp.example.jsonc wrangler.mcp.jsonc
+```sh
+npm ci
 cp .dev.vars.example .dev.vars
 
-# 1. Create resources
-wrangler d1 create agentic-inbox     # paste database_id into wrangler.jsonc
-wrangler r2 bucket create agentic-inbox-raw
-wrangler kv namespace create agentic-inbox-mcp-oauth # bind as OAUTH_KV in wrangler.mcp.jsonc
-
-# 2. Apply schema (+ optional demo data)
+# Local resources are emulated; no Cloudflare login or resource creation needed.
 npm run db:migrate:local
 npm run db:seed:local
-
-# Create the production drafting queues once
-wrangler queues create agentic-inbox-drafts
-wrangler queues create agentic-inbox-drafts-dlq
-
-# Generate one VAPID key pair, then store each printed value as a Worker secret
-npm run vapid:generate
-wrangler secret put VAPID_PUBLIC_KEY
-wrangler secret put VAPID_PRIVATE_JWK
-wrangler secret put VAPID_SUBJECT  # e.g. https://inbox.example.com or mailto:admin@example.com
-
-# 3. Local dev (web UI + API at http://localhost:5173)
 npm run dev
-
-# 4. Deploy
-npm run db:migrate
-npm run deploy
-npm run deploy:mcp
 ```
 
 ### Wire up a domain

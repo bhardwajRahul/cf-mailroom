@@ -14,7 +14,6 @@
     {
       "binding": "DB",
       "database_name": "agentic-inbox",
-      "database_id": "c4bee2a2-df80-45f0-9df5-4a1d9804d0a0",
       "migrations_dir": "migrations"
     }
   ],

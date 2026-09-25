@@ -8,16 +8,38 @@
     "build": "vite build",
     "check": "tsc -b",
     "test": "node --test --experimental-strip-types tests/*.test.mjs",
-    "deploy": "npm run build && wrangler deploy --config dist/agentic_inbox/wrangler.json",
+    "deploy": "npm run build && npm run db:migrate && wrangler deploy",
     "deploy:mcp": "wrangler deploy --config wrangler.mcp.jsonc",
-    "db:migrate:local": "wrangler d1 migrations apply agentic-inbox --local",
-    "db:migrate": "wrangler d1 migrations apply agentic-inbox --remote",
-    "db:seed:local": "wrangler d1 execute agentic-inbox --local --file=./scripts/seed.sql",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.dev.jsonc",
+    "db:migrate": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
+    "db:seed:local": "wrangler d1 execute DB --local --config wrangler.dev.jsonc --file=./scripts/seed.sql",
     "email:test": "curl -X POST 'http://localhost:5173/cdn-cgi/handler/email?from=customer@example.com&to=support@yourdomain.com' -H 'Content-Type: message/rfc822' --data-binary @./scripts/test-email.eml",
     "email:test:attachment": "curl -X POST 'http://localhost:5173/cdn-cgi/handler/email?from=forms@example.com&to=support@yourdomain.com' -H 'Content-Type: message/rfc822' --data-binary @./scripts/test-email-attachment.eml",
     "email:test:reopen": "curl -X POST 'http://localhost:5173/cdn-cgi/handler/email?from=forms@example.com&to=support@yourdomain.com' -H 'Content-Type: message/rfc822' --data-binary @./scripts/test-email-reopen.eml",
     "vapid:generate": "pushforge vapid",
     "cf-typegen": "wrangler types"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "Stores inboxes, conversations, messages and settings. Choose a new database for this instance; migrations run automatically during deployment."
+      },
+      "RAW": {
+        "description": "Private storage for original emails and attachments. Requires R2 to be enabled on your Cloudflare account."
+      },
+      "AI": {
+        "description": "Workers AI generates drafts and classifies inbound email. Usage is billed to your Cloudflare account."
+      },
+      "EMAIL": {
+        "description": "Outbound email. Enable Email Sending and onboard your sender domain after deployment; arbitrary recipients require Workers Paid."
+      },
+      "DRAFT_QUEUE": {
+        "description": "Runs AI drafts asynchronously, with automatic retries. Use a queue dedicated to this instance."
+      },
+      "DRAFT_DLQ": {
+        "description": "Keeps failed draft jobs after retries are exhausted. Use a separate queue dedicated to this instance."
+      }
+    }
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "0.10.3",
@@ -53,6 +75,6 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.0",
     "vite": "^6.0.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "4.124.0"
   }
 }

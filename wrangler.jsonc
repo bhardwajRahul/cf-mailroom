@@ -10,8 +10,9 @@
   "d1_databases": [
     {
       "binding": "DB",
+      // Resolve by name in the deploying Cloudflare account; no account-specific ID.
+      // Manual setup must create the database before migrations (docs/deployment.md).
       "database_name": "agentic-inbox",
-      "database_id": "c4bee2a2-df80-45f0-9df5-4a1d9804d0a0",
       "migrations_dir": "migrations"
     }
   ],
@@ -36,6 +37,12 @@
       {
         "binding": "DRAFT_QUEUE",
         "queue": "agentic-inbox-drafts"
+      },
+      {
+        // Declare the DLQ as a binding so template deployments provision it too.
+        // The consumer below routes exhausted retries here; app code does not send to it.
+        "binding": "DRAFT_DLQ",
+        "queue": "agentic-inbox-drafts-dlq"
       }
     ],
     "consumers": [

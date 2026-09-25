@@ -16,9 +16,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      // Same database as the Web Worker.
+      // Same database name and Cloudflare account as the deployed Web Worker.
       "database_name": "agentic-inbox",
-      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
