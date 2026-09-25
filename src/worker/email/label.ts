@@ -40,6 +40,7 @@ export async function labelNewThread(
     .all<LabelRule>();
   if (labels.length === 0) return;
 
+  const evaluatedLabels = labels.slice(0, MAX_LABELS_PER_EVALUATION);
   const response = await env.AI.run(LABEL_MODEL, {
     state: {
       from: message.from_name
@@ -48,10 +49,10 @@ export async function labelNewThread(
       subject: message.subject,
       body: (message.text_body ?? "").slice(0, MAX_BODY_CHARS),
     },
-    questions: buildJevQuestions(labels.slice(0, MAX_LABELS_PER_EVALUATION)),
+    questions: buildJevQuestions(evaluatedLabels),
   });
 
-  const matched = matchedLabelIds(labels, response);
+  const matched = matchedLabelIds(evaluatedLabels, response);
   for (const labelId of matched) {
     await env.DB.prepare(
       "INSERT OR IGNORE INTO thread_labels (thread_id, label_id) VALUES (?, ?)",
@@ -81,9 +82,18 @@ export function matchedLabelIds(
   labels: LabelRule[],
   response: unknown,
 ): number[] {
+  // Cloudflare's third-party model transport wraps the model output, while
+  // the JEV schema documents the bare payload. Accept both response shapes.
+  const envelope = response as { state?: unknown; result?: unknown } | null;
+  if (envelope?.state !== undefined && envelope.state !== "Completed") {
+    throw new Error("Invalid JEV response: evaluation did not complete");
+  }
+  const result = envelope?.state === "Completed" ? envelope.result : response;
+  const answers = (result as { answers?: unknown } | null)?.answers;
+
   return labels
     .filter(
-      (label) => jevNoul(response, questionKey(label.id)) >= MATCH_THRESHOLD,
+      (label) => jevNoul(answers, questionKey(label.id)) >= MATCH_THRESHOLD,
     )
     .map((label) => label.id);
 }
@@ -92,9 +102,11 @@ function questionKey(labelId: number): string {
   return `label_${labelId}`;
 }
 
-function jevNoul(response: unknown, key: string): number {
-  const answers = (response as { answers?: unknown } | null)?.answers;
+function jevNoul(answers: unknown, key: string): number {
   const answer = (answers as Record<string, unknown> | null)?.[key];
   const noul = (answer as { noul?: unknown } | null)?.noul;
-  return typeof noul === "number" ? noul : 0;
+  if (typeof noul !== "number" || !Number.isFinite(noul) || noul < 0 || noul > 1) {
+    throw new Error(`Invalid JEV response: missing or invalid probability for ${key}`);
+  }
+  return noul;
 }

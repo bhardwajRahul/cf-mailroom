@@ -87,9 +87,13 @@ export async function receiveEmail(
 
   if (existingThreadId === null) {
     ctx.waitUntil(
-      labelNewThread(env, stored.threadId, stored.messageId).catch((error) =>
-        console.error("Auto-label task failed", error),
-      ),
+      labelNewThread(env, stored.threadId, stored.messageId).catch((error) => {
+        console.error("Auto-label task failed", {
+          threadId: stored.threadId,
+          messageId: stored.messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
     );
   }
 
