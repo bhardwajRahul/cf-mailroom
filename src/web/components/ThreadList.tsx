@@ -235,7 +235,7 @@ export function ThreadList(props: {
               </TabsList>
             </Tabs>
 
-            {availableLabels.length > 0 && (
+            {(availableLabels.length > 0 || props.activeLabel !== null) && (
               <div className="mt-2 flex items-center gap-2">
                 <TagIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <Select
@@ -339,7 +339,13 @@ export function ThreadList(props: {
                   ? "Inbox zero"
                   : `No ${props.filter} conversations`
             }
-            detail={props.search ? "Try a name, subject, or message text." : undefined}
+            detail={
+              props.activeLabel !== null
+                ? "Try another label or choose All labels."
+                : props.search
+                  ? "Try a name, subject, or message text."
+                  : undefined
+            }
           />
         )}
 

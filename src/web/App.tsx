@@ -175,6 +175,7 @@ function Workspace(props: {
     !threads.isPlaceholderData &&
     deferredSearch === "" &&
     filter === "all" &&
+    activeLabel === null &&
     threads.data?.length === 0;
 
   return (
