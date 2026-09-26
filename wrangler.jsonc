@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   // Resource names identify this deployment; every instance chooses its own.
-  "name": "agentic-inbox",
+  "name": "mailroom",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",
   "assets": {
@@ -13,7 +13,7 @@
       "binding": "DB",
       // Resolve by name in the deploying Cloudflare account; no account-specific ID.
       // Manual setup must create the database before migrations (docs/deployment.md).
-      "database_name": "agentic-inbox",
+      "database_name": "mailroom",
       "migrations_dir": "migrations"
     }
   ],
@@ -29,30 +29,30 @@
   "r2_buckets": [
     {
       "binding": "RAW",
-      // Create with: wrangler r2 bucket create agentic-inbox-raw
-      "bucket_name": "agentic-inbox-raw"
+      // Create with: wrangler r2 bucket create mailroom-raw
+      "bucket_name": "mailroom-raw"
     }
   ],
   "queues": {
     "producers": [
       {
         "binding": "DRAFT_QUEUE",
-        "queue": "agentic-inbox-drafts"
+        "queue": "mailroom-drafts"
       },
       {
         // Declare the DLQ as a binding so template deployments provision it too.
         // The consumer below routes exhausted retries here; app code does not send to it.
         "binding": "DRAFT_DLQ",
-        "queue": "agentic-inbox-drafts-dlq"
+        "queue": "mailroom-drafts-dlq"
       }
     ],
     "consumers": [
       {
-        "queue": "agentic-inbox-drafts",
+        "queue": "mailroom-drafts",
         "max_batch_size": 5,
         "max_batch_timeout": 5,
         "max_retries": 3,
-        "dead_letter_queue": "agentic-inbox-drafts-dlq"
+        "dead_letter_queue": "mailroom-drafts-dlq"
       }
     ]
   },

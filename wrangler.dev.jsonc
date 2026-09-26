@@ -3,7 +3,7 @@
 // neither is needed for UI iteration. Deploys use wrangler.jsonc.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "agentic-inbox",
+  "name": "mailroom",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",
   "assets": {
@@ -13,26 +13,26 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "agentic-inbox",
+      "database_name": "mailroom",
       "migrations_dir": "migrations"
     }
   ],
   "r2_buckets": [
     {
       "binding": "RAW",
-      "bucket_name": "agentic-inbox-raw"
+      "bucket_name": "mailroom-raw"
     }
   ],
   "queues": {
     "producers": [
       {
         "binding": "DRAFT_QUEUE",
-        "queue": "agentic-inbox-drafts-dev"
+        "queue": "mailroom-drafts-dev"
       }
     ],
     "consumers": [
       {
-        "queue": "agentic-inbox-drafts-dev",
+        "queue": "mailroom-drafts-dev",
         "max_batch_size": 5,
         "max_batch_timeout": 1,
         "max_retries": 1

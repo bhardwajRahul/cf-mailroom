@@ -105,7 +105,7 @@ R2 resources. Do not create an empty second database or bucket for MCP.
 2. Copy `wrangler.mcp.example.jsonc` to `wrangler.mcp.jsonc`. Copy the actual
    `DB` and `RAW` values from your web Worker's `wrangler.jsonc`. Use the same
    Cloudflare account and database name so MCP reuses the existing database.
-3. Run `npx wrangler kv namespace create agentic-inbox-mcp-oauth` and copy the
+3. Run `npx wrangler kv namespace create mailroom-mcp-oauth` and copy the
    returned ID into `OAUTH_KV`. Set your MCP hostname, `WEB_APP_URL`, Zero Trust
    team domain, and owner email in the MCP config.
 4. Follow [Configure OAuth](../README.md#configure-oauth) to deploy and protect
@@ -150,10 +150,10 @@ bind your own resources before connecting Workers Builds:
 ```sh
 npm ci
 npx wrangler login
-npx wrangler d1 create agentic-inbox
-npx wrangler r2 bucket create agentic-inbox-raw
-npx wrangler queues create agentic-inbox-drafts
-npx wrangler queues create agentic-inbox-drafts-dlq
+npx wrangler d1 create mailroom
+npx wrangler r2 bucket create mailroom-raw
+npx wrangler queues create mailroom-drafts
+npx wrangler queues create mailroom-drafts-dlq
 ```
 
 No database ID needs to be copied: Wrangler looks up `database_name` in your
