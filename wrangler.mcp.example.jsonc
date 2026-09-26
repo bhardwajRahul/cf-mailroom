@@ -49,8 +49,8 @@
     "MCP_SEND_ENABLED": "true",
     "MCP_DAILY_SEND_LIMIT": "100",
     "MCP_HOSTNAME": "mcp.example.com",
-    // Access-protected web origin from the deployment guide. Not a workers.dev URL.
-    "WEB_APP_URL": "https://inbox.example.com"
+    // Access-protected web origin, such as the workers.dev hostname.
+    "WEB_APP_URL": "https://mailroom.your-subdomain.workers.dev"
   },
   "observability": {
     "enabled": true

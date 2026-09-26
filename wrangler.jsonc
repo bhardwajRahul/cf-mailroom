@@ -4,10 +4,9 @@
   "name": "mailroom",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",
-  // No public workers.dev or preview URL. Attach the web hostname in `routes`
-  // (docs/deployment.md). Omitting workers_dev turns workers.dev back on
-  // whenever routes is empty.
-  "workers_dev": false,
+  // Publish the workers.dev hostname and put Cloudflare Access on it.
+  // Preview URLs are separate hostnames, so keep them off.
+  "workers_dev": true,
   "preview_urls": false,
   "assets": {
     "not_found_handling": "single-page-application",
