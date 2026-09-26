@@ -237,6 +237,7 @@ function Workspace(props: {
             onSelectLabel={(id) => updateQuery("label", id === null ? "" : String(id))}
             onSelectMailbox={selectMailbox}
             onOpenSettings={openSettings}
+            onOpenMailboxSettings={(id) => navigate(`/settings/inboxes/${id}`)}
             onSelect={(id) =>
               navigate({ pathname: threadPath(selectedMailbox, id), search: location.search })
             }

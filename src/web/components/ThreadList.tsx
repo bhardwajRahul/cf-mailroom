@@ -53,6 +53,7 @@ export function ThreadList(props: {
   onSelectLabel: (id: number | null) => void;
   onSelectMailbox: (id: number | null) => void;
   onOpenSettings: () => void;
+  onOpenMailboxSettings: (id: number) => void;
   onSelect: (id: number) => void;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
@@ -166,6 +167,18 @@ export function ThreadList(props: {
               <span className="sr-only">{showFetching ? "Refreshing conversations" : ""}</span>
             </span>
           </div>
+          {props.selectedMailbox !== null && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => props.onOpenMailboxSettings(props.selectedMailbox!)}
+              aria-label="Inbox settings"
+              title="Inbox settings"
+              className="-mr-1.5 hidden text-muted-foreground lg:inline-flex"
+            >
+              <SettingsIcon className="h-4 w-4" />
+            </Button>
+          )}
 
           <div className="flex min-w-0 flex-1 items-center justify-between gap-2 lg:hidden">
             <Select
@@ -192,8 +205,12 @@ export function ThreadList(props: {
             <Button
               variant="ghost"
               size="icon"
-              onClick={props.onOpenSettings}
-              aria-label="Open settings"
+              onClick={() =>
+                props.selectedMailbox === null
+                  ? props.onOpenSettings()
+                  : props.onOpenMailboxSettings(props.selectedMailbox)
+              }
+              aria-label={props.selectedMailbox === null ? "Open settings" : "Inbox settings"}
               className="-mr-1.5 text-muted-foreground"
             >
               <SettingsIcon className="h-[18px] w-[18px]" />
