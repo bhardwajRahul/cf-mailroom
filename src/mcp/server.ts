@@ -108,10 +108,10 @@ function decodeBase64(value: string): Uint8Array {
   return bytes;
 }
 
-export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): McpServer {
+export function createMailroomServer(env: McpEnv, identity: McpIdentity): McpServer {
   const server = new McpServer({
-    name: "Agentic Inbox",
-    title: "Agentic Inbox",
+    name: "Mailroom",
+    title: "Mailroom",
     version: "0.1.0",
   });
 
@@ -119,7 +119,7 @@ export function createAgenticInboxServer(env: McpEnv, identity: McpIdentity): Mc
     "list_inboxes",
     {
       title: "List inboxes",
-      description: "List the email inboxes available in this Agentic Inbox workspace.",
+      description: "List the email inboxes available in this Mailroom workspace.",
       inputSchema: z.object({}),
       outputSchema: z.object({ inboxes: z.array(inboxSchema) }),
       annotations: {

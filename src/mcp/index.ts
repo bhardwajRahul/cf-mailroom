@@ -11,7 +11,7 @@ import {
   isRejectedMcpRouteLookalike,
   MCP_ROUTE,
 } from "./route.ts";
-import { createAgenticInboxServer, type McpEnv } from "./server.ts";
+import { createMailroomServer, type McpEnv } from "./server.ts";
 
 interface Env extends McpEnv, AuthorizationEnv {
   OAUTH_KV: KVNamespace;
@@ -65,7 +65,7 @@ class McpApiHandler extends WorkerEntrypoint<Env, OAuthGrantProps> {
     };
     const hostname = new URL(origin).hostname;
     const handler = createMcpHandler(
-      () => createAgenticInboxServer(this.env, identity),
+      () => createMailroomServer(this.env, identity),
       {
         route: MCP_ROUTE,
         allowedHostnames: [hostname],
@@ -111,7 +111,7 @@ function oauthError(
   scope?: string,
 ): Response {
   const challenge = [
-    'Bearer realm="Agentic Inbox"',
+    'Bearer realm="Mailroom"',
     `error="${error}"`,
     `error_description="${description}"`,
     `resource_metadata="${origin}/.well-known/oauth-protected-resource/v1"`,
@@ -148,7 +148,7 @@ function getOAuthProvider(env: Env): OAuthProvider<Env> {
     authorization_servers: [origin],
     scopes_supported: [MCP_READ_SCOPE, MCP_SEND_SCOPE],
     bearer_methods_supported: ["header"],
-    resource_name: "Agentic Inbox",
+    resource_name: "Mailroom",
   },
   accessTokenTTL: 15 * 60,
   refreshTokenTTL: 30 * 24 * 60 * 60,

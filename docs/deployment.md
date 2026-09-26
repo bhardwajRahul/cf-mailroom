@@ -1,4 +1,4 @@
-# Deploy your own Agentic Inbox
+# Deploy your own Mailroom
 
 The recommended path is Cloudflare's guided deployment, followed by Access and
 email domain setup. No local CLI or API keys are needed for the initial web app.
@@ -17,7 +17,7 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
 
 ## 1. Deploy the web app
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wong2/agentic-inbox)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wong2/cf-mailroom)
 
 1. Sign in to Cloudflare and connect GitHub when prompted. The source repository
    must be public for other users to use this button.
@@ -85,7 +85,7 @@ events to sign in.
 2. Enable **Email Sending** in Email Service and onboard the sender domain,
    completing the DNS verification shown by Cloudflare. The `EMAIL` Worker
    binding alone does not verify a domain or grant sending access.
-3. In Agentic Inbox **Settings**, add an Inbox such as `support@example.com`.
+3. In Mailroom **Settings**, add an Inbox such as `support@example.com`.
    Start with agent mode `off` or `draft` while checking delivery.
 4. In Email Routing, point that address (or a catch-all rule) at your deployed
    Worker using **Send to Worker**. Unknown recipient addresses are rejected:

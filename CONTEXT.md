@@ -1,6 +1,6 @@
-# Agentic Inbox
+# Mailroom
 
-Agentic Inbox is a shared email workspace where people and agents handle customer conversations through the same inboxes.
+Mailroom is a shared email workspace where people and agents handle customer conversations through the same inboxes.
 
 ## Language
 

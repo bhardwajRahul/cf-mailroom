@@ -22,7 +22,7 @@ export function Sidebar(props: {
           className="h-5 w-5 shrink-0 object-contain"
         />
         <p className="min-w-0 truncate text-sm font-semibold tracking-[-0.01em] text-foreground">
-          Agentic Inbox
+          Mailroom
         </p>
       </div>
 
