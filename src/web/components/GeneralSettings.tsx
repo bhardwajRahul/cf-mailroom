@@ -12,8 +12,13 @@ import {
   getBrowserPushState,
   unsubscribeCurrentBrowser,
 } from "../push-notifications";
-import { ArrowLeftIcon, BellIcon, SettingsIcon } from "./Icons";
-import { SettingsNavigation } from "./SettingsNavigation";
+import { BellIcon } from "./Icons";
+import {
+  SettingsBlock,
+  SettingsHeader,
+  SettingsPage,
+  SettingsPanel,
+} from "./SettingsNavigation";
 
 export function GeneralSettings(props: {
   onBack: () => void;
@@ -71,93 +76,71 @@ export function GeneralSettings(props: {
   const error = enable.error ?? disable.error;
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-muted/20">
-      <header className="flex min-h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:px-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={props.onBack}
-          className="-ml-1 lg:hidden"
-          aria-label="Back to inbox"
-        >
-          <ArrowLeftIcon className="h-5 w-5" />
-        </Button>
-        <span className="hidden h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 md:flex">
-          <SettingsIcon className="h-[18px] w-[18px]" />
-        </span>
-        <h1 className="text-[17px] font-semibold tracking-[-0.02em] text-slate-950">Settings</h1>
-      </header>
+    <div className="flex h-full min-w-0 flex-col bg-canvas">
+      <SettingsHeader
+        active="general"
+        onBack={props.onBack}
+        onOpenGeneral={() => undefined}
+        onOpenInboxes={props.onOpenInboxes}
+      />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="w-full max-w-[920px] px-4 py-6 md:px-6 md:py-8">
-          <SettingsNavigation
-            active="general"
-            onOpenGeneral={() => undefined}
-            onOpenInboxes={props.onOpenInboxes}
-          />
+      <SettingsPage>
+        <SettingsBlock id="notification-settings-heading" title="Notifications">
+          <SettingsPanel>
+            <div className="flex items-start gap-4 px-4 py-4 sm:px-5">
+              <div className="min-w-0 flex-1">
+                <label
+                  htmlFor="browser-notifications"
+                  className="flex items-center gap-2 text-[13.5px] font-medium text-foreground"
+                >
+                  <BellIcon className="h-4 w-4 text-muted-foreground" />
+                  New email notifications
+                </label>
+                <p className="mt-1 max-w-xl text-[13px] leading-5 text-muted-foreground">
+                  {notificationDescription({
+                    configured,
+                    supported,
+                    blocked,
+                    globalEnabled,
+                    subscribed,
+                  })}
+                </p>
 
-          <section aria-labelledby="notification-settings-heading">
-            <h2
-              id="notification-settings-heading"
-              className="mb-3 px-1 text-[14px] font-semibold text-slate-900"
-            >
-              Notifications
-            </h2>
+                {globalEnabled && !subscribed && supported && !blocked && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => enable.mutate()}
+                    disabled={busy || !configured}
+                  >
+                    {enable.isPending ? "Enabling…" : "Enable on this browser"}
+                  </Button>
+                )}
 
-            <div className="rounded-lg border bg-background">
-              <div className="flex items-start gap-4 px-4 py-4 sm:px-5">
-                <span className="mt-0.5 hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-muted/30 text-muted-foreground sm:flex">
-                  <BellIcon className="h-[18px] w-[18px]" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <label htmlFor="browser-notifications" className="text-sm font-medium text-foreground">
-                    New email notifications
-                  </label>
-                  <p className="mt-1 max-w-xl text-sm leading-5 text-muted-foreground">
-                    {notificationDescription({
-                      configured,
-                      supported,
-                      blocked,
-                      globalEnabled,
-                      subscribed,
-                    })}
+                {error && (
+                  <p className="mt-2 text-xs leading-5 text-destructive" role="alert">
+                    {notificationErrorMessage(error)}
                   </p>
-
-                  {globalEnabled && !subscribed && supported && !blocked && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => enable.mutate()}
-                      disabled={busy || !configured}
-                    >
-                      {enable.isPending ? "Enabling…" : "Enable on this browser"}
-                    </Button>
-                  )}
-
-                  {error && (
-                    <p className="mt-2 text-xs text-destructive" role="alert">
-                      {notificationErrorMessage(error)}
-                    </p>
-                  )}
-                </div>
-                <Switch
-                  id="browser-notifications"
-                  checked={globalEnabled}
-                  onCheckedChange={(checked) =>
-                    checked ? enable.mutate() : disable.mutate()
-                  }
-                  disabled={switchDisabled}
-                  aria-describedby="browser-notifications-description"
-                />
-                <span id="browser-notifications-description" className="sr-only">
-                  Applies to new email received by every inbox in this workspace.
-                </span>
+                )}
               </div>
+              <Switch
+                id="browser-notifications"
+                checked={globalEnabled}
+                onCheckedChange={(checked) =>
+                  checked ? enable.mutate() : disable.mutate()
+                }
+                disabled={switchDisabled}
+                aria-describedby="browser-notifications-description"
+                className="mt-0.5"
+              />
+              <span id="browser-notifications-description" className="sr-only">
+                Applies to new email received by every inbox in this workspace.
+              </span>
             </div>
-          </section>
-        </div>
-      </div>
+          </SettingsPanel>
+        </SettingsBlock>
+      </SettingsPage>
     </div>
   );
 }

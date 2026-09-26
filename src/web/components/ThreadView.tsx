@@ -25,6 +25,7 @@ import { EmailHtmlBody } from "./EmailHtmlBody";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  ChevronDownIcon,
   InboxIcon,
   PaperclipIcon,
   SendIcon,
@@ -134,21 +135,27 @@ export function ThreadView(props: {
 
   if (detail.isError || !detail.data) {
     return (
-      <div className="flex h-full flex-col bg-muted/20">
-        <div className="flex h-16 items-center border-b bg-background px-4 md:px-6">
-          <Button variant="ghost" size="icon" onClick={props.onBack} className="mr-2 md:hidden">
-            <ArrowLeftIcon />
+      <div className="flex h-full flex-col bg-canvas">
+        <div className="flex h-16 items-center border-b bg-background px-4 md:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={props.onBack}
+            className="-ml-1"
+            aria-label="Back to conversations"
+          >
+            <ArrowLeftIcon className="h-5 w-5" />
           </Button>
         </div>
-        <div className="flex flex-1 flex-col items-start px-6 py-10 text-left">
-          <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400">
-            <InboxIcon className="h-5 w-5" />
+        <div className="flex flex-1 flex-col items-center justify-center px-6 pb-16 text-center">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <InboxIcon className="h-[18px] w-[18px]" />
           </span>
-          <p className="mt-3 text-sm font-medium text-slate-700">Couldn’t open this conversation</p>
-          <Button
-            onClick={() => detail.refetch()}
-            className="mt-3"
-          >
+          <p className="mt-3 text-[13px] font-medium text-foreground">Couldn’t open this conversation</p>
+          <p className="mt-1 text-[12.5px] text-muted-foreground">
+            It may have been archived or deleted, or the connection dropped.
+          </p>
+          <Button variant="outline" onClick={() => detail.refetch()} className="mt-4">
             Try again
           </Button>
         </div>
@@ -196,8 +203,8 @@ export function ThreadView(props: {
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-muted/20">
-      <header className="flex min-h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:px-6">
+    <div className="flex h-full min-w-0 flex-col bg-canvas">
+      <header className="flex min-h-16 shrink-0 items-center gap-3 border-b bg-background px-4 py-2.5 md:px-6">
         <Button
           variant="ghost"
           size="icon"
@@ -208,15 +215,16 @@ export function ThreadView(props: {
           <ArrowLeftIcon className="h-5 w-5" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[16px] font-semibold tracking-[-0.015em] text-slate-950">
+          <h1
+            className="truncate text-[15px] font-semibold tracking-[-0.015em] text-foreground"
+            title={thread.subject || undefined}
+          >
             {thread.subject || "(no subject)"}
           </h1>
-          <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-slate-400">
-            <span className="inline-flex min-w-0 items-center rounded-md bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
-              <span className="truncate">{thread.mailbox_address}</span>
-            </span>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="truncate">{thread.mailbox_address}</span>
             <span aria-hidden="true">·</span>
-            <span className="shrink-0">
+            <span className="shrink-0 tabular-nums">
               {thread.message_count} {thread.message_count === 1 ? "message" : "messages"}
             </span>
           </div>
@@ -225,7 +233,8 @@ export function ThreadView(props: {
           variant="outline"
           onClick={() => archive.mutate()}
           disabled={archive.isPending}
-          className="h-9"
+          aria-label="Archive conversation"
+          className="shrink-0"
         >
           <ArchiveIcon className="h-4 w-4" />
           <span className="hidden sm:inline">{archive.isPending ? "Archiving…" : "Archive"}</span>
@@ -233,7 +242,7 @@ export function ThreadView(props: {
       </header>
 
       <div ref={conversationRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mr-auto w-full max-w-[800px] space-y-4 px-4 py-5 sm:px-6 md:py-6">
+        <div className="mr-auto w-full max-w-[800px] space-y-3 px-4 py-5 sm:px-6 md:py-6">
           {messages.map((message) => (
             <MessageCard
               key={message.id}
@@ -279,12 +288,12 @@ export function ThreadView(props: {
         </div>
       </div>
 
-      <footer className="shrink-0 border-t bg-background px-4 py-3 sm:px-6 sm:py-4">
+      <footer className="shrink-0 bg-canvas px-4 pt-1 pb-3 sm:px-6 sm:pb-5">
         <div className="mr-auto w-full max-w-[800px]">
-          <Card className="gap-0 py-0">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2 text-[10.5px] text-slate-400">
-              <span>Replying from</span>
-              <span className="font-medium text-slate-600">{thread.mailbox_address}</span>
+          <Card className="gap-0 py-0 shadow-[0_1px_2px_oklch(0.2_0.012_265/0.04),0_4px_16px_-6px_oklch(0.2_0.012_265/0.08)] transition-shadow focus-within:ring-foreground/25">
+            <div className="flex min-w-0 items-center gap-1.5 border-b border-border/70 px-3.5 py-2 text-xs text-muted-foreground">
+              <span className="shrink-0">Replying from</span>
+              <span className="truncate font-medium text-foreground/80">{thread.mailbox_address}</span>
             </div>
             <Textarea
               value={replyText}
@@ -297,14 +306,15 @@ export function ThreadView(props: {
               }}
               placeholder="Write a reply…"
               rows={3}
-              className="min-h-[80px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-[13px] shadow-none focus-visible:ring-0"
+              aria-label="Reply"
+              className="max-h-[40dvh] min-h-[84px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-6 shadow-none focus-visible:ring-0 md:text-sm"
             />
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-1.5 px-3.5 pb-1" aria-label="Attachments to send">
                 {pendingFiles.map((file, index) => (
                   <span
                     key={`${file.name}-${index}`}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-[11px] text-foreground"
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/40 py-1 pr-1 pl-2 text-xs text-foreground"
                   >
                     <PaperclipIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 truncate">{file.name}</span>
@@ -314,7 +324,7 @@ export function ThreadView(props: {
                     <button
                       type="button"
                       aria-label={`Remove ${file.name}`}
-                      className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       onClick={() =>
                         setPendingFiles((current) =>
                           current.filter((_, i) => i !== index),
@@ -328,7 +338,11 @@ export function ThreadView(props: {
               </div>
             )}
             <div className="flex items-center justify-end px-3 pb-3 sm:justify-between">
-              <span className="hidden text-[10px] text-muted-foreground sm:inline">⌘ Enter to send</span>
+              <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
+                <Kbd>{isMac ? "⌘" : "Ctrl"}</Kbd>
+                <Kbd>Enter</Kbd>
+                <span className="ml-0.5">to send</span>
+              </span>
               <div className="flex items-center gap-1.5">
                 <input
                   ref={fileInputRef}
@@ -340,8 +354,9 @@ export function ThreadView(props: {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground"
+                  className="text-muted-foreground"
                   aria-label="Attach files"
+                  title="Attach files"
                   disabled={reply.isPending}
                   onClick={() => fileInputRef.current?.click()}
                 >
@@ -352,7 +367,6 @@ export function ThreadView(props: {
                   disabled={
                     (!replyText.trim() && pendingFiles.length === 0) || reply.isPending
                   }
-                  size="sm"
                 >
                   <SendIcon className="h-3.5 w-3.5" />
                   {reply.isPending ? "Sending…" : "Send reply"}
@@ -361,7 +375,10 @@ export function ThreadView(props: {
             </div>
           </Card>
           {reply.isError && (
-            <div className="mt-2 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            <div
+              role="alert"
+              className="mt-2 flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs leading-5 text-destructive"
+            >
               <p className="min-w-0 flex-1">
                 {reply.error instanceof Error ? reply.error.message : "The reply could not be sent."}
                 {" "}Your text is still here. Check Email Logs before creating a new send attempt.
@@ -370,7 +387,7 @@ export function ThreadView(props: {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="shrink-0 bg-white text-foreground"
+                  className="shrink-0 text-foreground"
                   onClick={() => {
                     attemptIds.current.delete(failedAttemptKey);
                     setFailedAttemptKey(null);
@@ -383,7 +400,10 @@ export function ThreadView(props: {
             </div>
           )}
           {sendNotice && (
-            <div className="mt-2 rounded-lg border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            <div
+              role="status"
+              className="mt-2 rounded-lg border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground"
+            >
               {sendNotice}
             </div>
           )}
@@ -420,27 +440,26 @@ function MessageCard({
 
   return (
     <Card className="gap-0 p-4 sm:p-5">
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-3 flex items-start gap-3">
         <EmailAvatar
           email={message.from_address}
           label={displayName}
           fallback={message.sent_by === "agent" ? <SparklesIcon className="h-4 w-4" /> : undefined}
-          className={`h-9 w-9 text-[12px] ${
-            isOutbound ? "bg-slate-200 text-slate-700" : ""
-          }`}
+          className={`h-9 w-9 text-[13px] ${isOutbound ? "bg-muted text-foreground/70" : ""}`}
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[13px] font-semibold text-slate-800">{displayName}</span>
+            <span className="truncate text-[13.5px] font-semibold text-foreground">{displayName}</span>
             {message.sent_by === "agent" && <AuthorBadge tone="agent">Agent</AuthorBadge>}
             {isOutbound && message.sent_by === "human" && <AuthorBadge tone="human">You</AuthorBadge>}
           </div>
-          <div className="mt-0.5 truncate text-[10.5px] text-slate-400">
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
             {isOutbound ? `to ${JSON.parse(message.to_addresses || "[]").join(", ")}` : message.from_address}
           </div>
         </div>
         <time
-          className="shrink-0 text-[10.5px] tabular-nums text-slate-400"
+          dateTime={message.created_at}
+          className="mt-0.5 shrink-0 text-xs tabular-nums text-muted-foreground"
           title={new Date(message.created_at).toLocaleString()}
         >
           {formatTime(message.created_at)}
@@ -454,7 +473,7 @@ function MessageCard({
           sender={displayName}
         />
       ) : (
-        <div className="break-words text-[13.5px] leading-6 whitespace-pre-wrap text-slate-800">
+        <div className="max-w-[72ch] break-words text-sm leading-6 whitespace-pre-wrap text-foreground">
           <LinkifiedText text={main} />
         </div>
       )}
@@ -465,7 +484,7 @@ function MessageCard({
               key={attachment.id}
               href={`/api/attachments/${attachment.id}`}
               download={attachment.filename || undefined}
-              className="inline-flex max-w-full items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-[11px] text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex max-w-full items-center gap-2 rounded-lg border bg-background px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <PaperclipIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 truncate">{attachment.filename || "Attachment"}</span>
@@ -477,14 +496,16 @@ function MessageCard({
       {!message.html_body && quoted && (
         <div className="mt-3">
           <Button
-            variant="outline"
+            variant="ghost"
             size="xs"
             onClick={() => setShowQuoted((visible) => !visible)}
+            aria-expanded={showQuoted}
+            className="-ml-2 text-muted-foreground"
           >
             {showQuoted ? "Hide quoted text" : "Show quoted text"}
           </Button>
           {showQuoted && (
-            <div className="mt-3 break-words border-l-2 border-slate-200 pl-3 text-[12px] leading-relaxed whitespace-pre-wrap text-slate-400">
+            <div className="mt-2 break-words border-l border-border pl-3 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
               <LinkifiedText text={quoted} />
             </div>
           )}
@@ -534,28 +555,30 @@ function MessageAgentState(props: MessageAgentStateProps) {
   return (
     <div
       className={`-mx-4 -mb-4 mt-4 flex items-start gap-2.5 border-t px-4 py-3 sm:-mx-5 sm:-mb-5 sm:items-center sm:px-5 ${
-        failed ? "border-red-100 bg-red-50/60" : "bg-muted/30"
+        failed ? "border-destructive/15 bg-destructive/5" : "border-border/70 bg-muted/40"
       }`}
     >
-      <span className={`mt-0.5 shrink-0 ${failed ? "text-red-700" : "text-muted-foreground"}`}>
+      <span className={`mt-0.5 shrink-0 sm:mt-0 ${failed ? "text-destructive" : "text-muted-foreground"}`}>
         <SparklesIcon className={`h-3.5 w-3.5 ${working ? "animate-pulse" : ""}`} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[11.5px] font-medium text-foreground">{state.title}</p>
-        <p className="mt-0.5 text-[10.5px] leading-relaxed text-muted-foreground">{state.detail}</p>
+        <p className={`text-[13px] font-medium ${failed ? "text-destructive" : "text-foreground"}`}>
+          {state.title}
+        </p>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{state.detail}</p>
       </div>
       {failed && props.run && (
-        <Button variant="outline" size="xs" onClick={props.onRetry} disabled={props.retrying}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={props.onRetry} disabled={props.retrying}>
           {props.retrying ? "Retrying…" : "Try again"}
         </Button>
       )}
       {props.status === "off" && (
-        <Button asChild variant="outline" size="xs">
+        <Button asChild variant="outline" size="sm" className="shrink-0">
           <Link to={props.settingsHref}>Open settings</Link>
         </Button>
       )}
       {props.status === "not_processed" && (
-        <Button variant="outline" size="xs" onClick={props.onStart} disabled={props.starting}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={props.onStart} disabled={props.starting}>
           {props.starting ? "Creating…" : "Create draft"}
         </Button>
       )}
@@ -569,11 +592,21 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+function Kbd(props: { children: React.ReactNode }) {
+  return (
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted/50 px-1 font-sans text-[11px] font-medium text-muted-foreground">
+      {props.children}
+    </kbd>
+  );
+}
+
 function AuthorBadge(props: { tone: "agent" | "human"; children: React.ReactNode }) {
   return (
     <Badge
       variant={props.tone === "agent" ? "outline" : "secondary"}
-      className="h-5 px-1.5 text-[9px] tracking-wide uppercase"
+      className="h-5 rounded-md px-1.5 text-[11px] font-medium"
     >
       {props.children}
     </Badge>
@@ -590,22 +623,22 @@ function DraftCard(props: {
   const [text, setText] = useState(props.draft.text_body);
 
   return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="flex flex-row items-center gap-3 border-b bg-muted/30 px-4 py-3 sm:px-5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg border bg-background text-foreground">
+    <Card className="gap-0 py-0 shadow-[0_1px_2px_oklch(0.2_0.012_265/0.04),0_6px_20px_-8px_oklch(0.2_0.012_265/0.12)] ring-foreground/20">
+      <CardHeader className="flex flex-row items-center gap-3 border-b bg-muted/40 px-4 py-3 sm:px-5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <SparklesIcon className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-slate-900">Agent draft</span>
-            <Badge variant="secondary" className="h-5 px-1.5 text-[9px] font-normal">
+            <span className="text-[13.5px] font-semibold text-foreground">Agent draft</span>
+            <Badge variant="outline" className="h-5 rounded-md bg-background px-1.5 text-[11px] font-medium">
               Needs review
             </Badge>
           </div>
-          <p className="mt-0.5 text-[10.5px] text-slate-500">
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {props.draft.playbook_name ? (
               <>
-                Playbook: <span className="font-semibold">{props.draft.playbook_name}</span>
+                Playbook: <span className="font-medium text-foreground/80">{props.draft.playbook_name}</span>
               </>
             ) : (
               "No playbook"
@@ -616,34 +649,31 @@ function DraftCard(props: {
 
       <CardContent className="p-4 sm:p-5">
         {props.draft.agent_notes && (
-          <details className="group mb-3 rounded-lg border bg-muted/30 px-3 py-2.5">
-            <summary className="cursor-pointer list-none text-[10.5px] font-semibold text-slate-500 marker:hidden">
-              <span className="inline-flex items-center gap-1.5">
-                <SparklesIcon className="h-3.5 w-3.5 text-slate-500" />
-                Agent context
-              </span>
+          <details className="group mb-3 rounded-lg border bg-muted/30">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground outline-none transition-colors marker:hidden hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+              <ChevronDownIcon className="h-3.5 w-3.5 -rotate-90 transition-transform group-open:rotate-0" />
+              Agent context
             </summary>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-slate-500">{props.draft.agent_notes}</p>
+            <p className="px-3 pb-3 pl-8 text-[12.5px] leading-5 text-muted-foreground">{props.draft.agent_notes}</p>
           </details>
         )}
         <Textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
           rows={7}
-          className="min-h-40 w-full resize-y text-[13.5px] leading-6"
+          aria-label="Draft reply"
+          className="min-h-40 w-full resize-y bg-background px-3 py-2.5 text-sm leading-6 md:text-sm"
         />
         <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
-              size="sm"
               onClick={props.onDiscard}
               disabled={props.discarding || props.sending}
             >
               {props.discarding ? "Discarding…" : "Discard"}
             </Button>
             <Button
-              size="sm"
               onClick={() => props.onSend(text)}
               disabled={!text.trim() || props.sending || props.discarding}
             >
@@ -659,23 +689,32 @@ function DraftCard(props: {
 
 function ThreadViewSkeleton({ onBack }: { onBack: () => void }) {
   return (
-    <div className="flex h-full flex-col bg-muted/20">
-      <div className="flex h-16 items-center border-b bg-background px-4 md:px-6">
-        <Button variant="ghost" size="icon" onClick={onBack} className="mr-2 md:hidden">
-          <ArrowLeftIcon />
+    <div className="flex h-full flex-col bg-canvas" aria-busy="true" aria-label="Loading conversation">
+      <div className="flex h-16 items-center gap-3 border-b bg-background px-4 md:px-6">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onBack}
+          className="-ml-1 md:hidden"
+          aria-label="Back to conversations"
+        >
+          <ArrowLeftIcon className="h-5 w-5" />
         </Button>
-        <div className="h-4 w-48 animate-pulse rounded bg-slate-100" />
+        <div className="space-y-2">
+          <div className="h-3.5 w-56 animate-pulse rounded bg-muted" />
+          <div className="h-2.5 w-32 animate-pulse rounded bg-muted/70" />
+        </div>
       </div>
-      <div className="mr-auto w-full max-w-[800px] space-y-4 px-4 py-6 sm:px-6">
+      <div className="mr-auto w-full max-w-[800px] space-y-3 px-4 py-5 sm:px-6 md:py-6">
         {[0, 1].map((item) => (
           <Card key={item} className="animate-pulse p-5">
             <div className="flex items-center gap-3">
-              <span className="h-9 w-9 rounded-full bg-slate-100" />
-              <span className="h-3 w-36 rounded bg-slate-100" />
+              <span className="h-9 w-9 rounded-full bg-muted" />
+              <span className="h-3 w-36 rounded bg-muted" />
             </div>
             <div className="mt-5 space-y-2">
-              <span className="block h-3 w-full rounded bg-slate-100" />
-              <span className="block h-3 w-4/5 rounded bg-slate-100" />
+              <span className="block h-3 w-full rounded bg-muted" />
+              <span className="block h-3 w-4/5 rounded bg-muted" />
             </div>
           </Card>
         ))}

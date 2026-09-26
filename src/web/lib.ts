@@ -1,8 +1,8 @@
 const AVATAR_COLORS = [
-  "bg-slate-200 text-slate-700",
-  "bg-stone-200 text-stone-700",
-  "bg-zinc-200 text-zinc-700",
-  "bg-blue-50 text-blue-700",
+  "bg-[oklch(0.935_0.018_265)] text-[oklch(0.42_0.06_265)]",
+  "bg-[oklch(0.935_0.02_200)] text-[oklch(0.42_0.05_200)]",
+  "bg-[oklch(0.935_0.022_305)] text-[oklch(0.43_0.07_305)]",
+  "bg-[oklch(0.94_0.022_70)] text-[oklch(0.45_0.06_60)]",
 ];
 
 export function avatarClass(seed: string): string {

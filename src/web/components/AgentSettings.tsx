@@ -4,13 +4,6 @@ import type { Label, Mailbox, Playbook } from "../../shared/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -46,16 +39,19 @@ import {
   updatePlaybook,
 } from "../api";
 import {
-  ArrowLeftIcon,
   ExternalLinkIcon,
   PencilIcon,
   PlusIcon,
-  SettingsIcon,
   SparklesIcon,
   TagIcon,
   TrashIcon,
 } from "./Icons";
-import { SettingsNavigation } from "./SettingsNavigation";
+import {
+  SettingsBlock,
+  SettingsHeader,
+  SettingsPage,
+  SettingsPanel,
+} from "./SettingsNavigation";
 
 interface PlaybookEditorState {
   id?: number;
@@ -327,68 +323,45 @@ export function AgentSettings(props: {
 
   const setupStepsRemaining = Number(!routingConfirmed) + Number(!sendingConfirmed);
 
+  const activePlaybookCount = playbooks.data?.filter((item) => item.enabled).length ?? 0;
+
   return (
-    <div className="flex h-full min-w-0 flex-col bg-muted/20">
-      <header className="flex min-h-16 shrink-0 items-center gap-3 border-b bg-background px-4 md:px-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={props.onBack}
-          className="-ml-1 lg:hidden"
-          aria-label="Back to inbox"
-        >
-          <ArrowLeftIcon className="h-5 w-5" />
-        </Button>
-        <span className="hidden h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 md:flex">
-          <SettingsIcon className="h-[18px] w-[18px]" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[17px] font-semibold tracking-[-0.02em] text-slate-950">Settings</h1>
-        </div>
-      </header>
+    <div className="flex h-full min-w-0 flex-col bg-canvas">
+      <SettingsHeader
+        active="inboxes"
+        onBack={props.onBack}
+        onOpenGeneral={props.onOpenGeneral}
+        onOpenInboxes={() => undefined}
+      />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="w-full max-w-[920px] px-4 py-6 md:px-6 md:py-8">
-          <SettingsNavigation
-            active="inboxes"
-            onOpenGeneral={props.onOpenGeneral}
-            onOpenInboxes={() => undefined}
-          />
-
-          <div className="mb-8 border-b pb-6">
-            <div className="max-w-sm">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-foreground">Inbox</span>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={openMailboxEditor}
-                  className="-mr-2"
-                >
-                  <PlusIcon className="h-3.5 w-3.5" />
-                  Add inbox
-                </Button>
-              </div>
-              <MailboxSelect
-                mailboxes={props.mailboxes}
-                selectedMailboxId={selectedMailboxId}
-                onSelect={props.onSelectMailbox}
-              />
-            </div>
+      <SettingsPage>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1 sm:max-w-sm">
+            <MailboxSelect
+              mailboxes={props.mailboxes}
+              selectedMailboxId={selectedMailboxId}
+              onSelect={props.onSelectMailbox}
+            />
           </div>
+          <Button variant="outline" className="h-9 self-start sm:self-auto" onClick={openMailboxEditor}>
+            <PlusIcon className="h-4 w-4" />
+            Add inbox
+          </Button>
+        </div>
 
-          <main className="min-w-0 flex-1 space-y-6">
-            {mailbox ? (
-              <>
-                <div className="flex items-start gap-4 rounded-lg border bg-background px-4 py-4 sm:px-5">
+        {mailbox ? (
+          <>
+            <SettingsBlock id="agent-drafting-heading" title="AI drafting">
+              <SettingsPanel>
+                <div className="flex items-start gap-4 px-4 py-4 sm:px-5">
                   <div className="min-w-0 flex-1">
                     <label
                       htmlFor="agent-drafting"
-                      className="text-sm font-medium text-foreground"
+                      className="text-[13.5px] font-medium text-foreground"
                     >
-                      AI drafting
+                      Draft replies to new messages
                     </label>
-                    <p className="mt-1 max-w-xl text-sm leading-5 text-muted-foreground">
+                    <p className="mt-1 max-w-xl text-[13px] leading-5 text-muted-foreground">
                       Create a draft for new customer messages. Nothing is sent without your approval.
                     </p>
                     {toggleDrafting.isError && (
@@ -407,82 +380,71 @@ export function AgentSettings(props: {
                     onCheckedChange={(checked) => toggleDrafting.mutate(checked)}
                     disabled={toggleDrafting.isPending}
                     aria-describedby="agent-drafting-description"
+                    className="mt-0.5"
                   />
                   <span id="agent-drafting-description" className="sr-only">
                     When enabled, the AI creates drafts that require your review before sending.
                   </span>
                 </div>
+              </SettingsPanel>
+            </SettingsBlock>
 
-                <Card className="gap-0 py-0">
-                  <CardHeader className="border-b py-4">
-                    <CardTitle className="text-sm">Base Instructions</CardTitle>
-                    <CardAction>
-                    <Button
-                      size="sm"
-                      onClick={() => saveInstructions.mutate()}
-                      disabled={
-                        saveInstructions.isPending || !instructionsDirty
-                      }
-                    >
-                      {saveInstructions.isPending
-                        ? "Saving…"
-                        : saveInstructions.isSuccess && !instructionsDirty
-                          ? "Saved"
-                          : "Save instructions"}
-                    </Button>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent className="py-4 sm:py-5">
-                    <Textarea
-                      value={baseInstructions}
-                      onChange={(event) => setBaseInstructions(event.target.value)}
-                      rows={10}
-                      placeholder="Describe the product, the agent's role, voice, general rules, and signature…"
-                      className="min-h-64 resize-y bg-background text-sm leading-6"
-                    />
-                    {saveInstructions.isError && (
-                      <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">
-                        Couldn’t save these instructions. Please try again.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <section>
-                  <div className="mb-3 flex items-center justify-between gap-4 px-1">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-[14px] font-semibold text-slate-900">Labels</h2>
-                      <Badge variant="outline" className="h-5 px-1.5 text-[9.5px] font-normal">
-                        {labels.data?.length ?? 0}
-                      </Badge>
-                    </div>
-                    <Button size="sm" onClick={() => openLabelEditor()}>
-                      <PlusIcon className="h-4 w-4" />
-                      New label
-                    </Button>
-                  </div>
-                  <p className="mb-3 px-1 text-[12px] leading-5 text-muted-foreground">
-                    New conversations are automatically tagged with every label whose condition matches. Replies are not labeled.
+            <SettingsBlock
+              id="base-instructions-heading"
+              title="Base Instructions"
+              description="Product context and guidance applied to every agent draft for this inbox."
+            >
+              <SettingsPanel className="transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
+                <Textarea
+                  value={baseInstructions}
+                  onChange={(event) => setBaseInstructions(event.target.value)}
+                  rows={10}
+                  aria-labelledby="base-instructions-heading"
+                  placeholder="Describe the product, the agent's role, voice, general rules, and signature…"
+                  className="min-h-56 resize-y rounded-none border-0 bg-transparent px-4 py-3.5 text-sm leading-6 shadow-none focus-visible:ring-0 sm:px-5 md:text-sm"
+                />
+                <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-4 py-2.5 sm:px-5">
+                  <p className="min-w-0 text-xs text-muted-foreground" aria-live="polite">
+                    {saveInstructions.isError ? (
+                      <span className="text-destructive">Couldn’t save these instructions. Try again.</span>
+                    ) : instructionsDirty ? (
+                      "Unsaved changes"
+                    ) : saveInstructions.isSuccess ? (
+                      "All changes saved"
+                    ) : null}
                   </p>
+                  <Button
+                    size="sm"
+                    onClick={() => saveInstructions.mutate()}
+                    disabled={saveInstructions.isPending || !instructionsDirty}
+                  >
+                    {saveInstructions.isPending ? "Saving…" : "Save instructions"}
+                  </Button>
+                </div>
+              </SettingsPanel>
+            </SettingsBlock>
 
-                  {labels.isLoading && <PlaybookSkeleton />}
-                  {labels.isError && (
-                    <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-left text-[12px] text-red-700">
-                      Couldn’t load labels.
-                    </div>
-                  )}
-                  {labels.data?.length === 0 && (
-                    <div className="flex items-center gap-3 rounded-lg border bg-background px-4 py-4">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        <TagIcon className="h-4 w-4" />
-                      </span>
-                      <p className="text-sm text-muted-foreground">No labels yet</p>
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    {labels.data?.map((label) => (
-                      <LabelCard
+            <SettingsBlock
+              id="labels-heading"
+              title="Labels"
+              description="New conversations are automatically tagged with every label whose condition matches. Replies are not labeled."
+              action={
+                <Button variant="outline" size="sm" onClick={() => openLabelEditor()}>
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  New label
+                </Button>
+              }
+            >
+              <SettingsPanel>
+                {labels.isLoading && <ListSkeleton />}
+                {labels.isError && <ListMessage tone="error">Couldn’t load labels.</ListMessage>}
+                {labels.data?.length === 0 && (
+                  <ListMessage icon={<TagIcon className="h-4 w-4" />}>No labels yet</ListMessage>
+                )}
+                {labels.data && labels.data.length > 0 && (
+                  <ul className="divide-y">
+                    {labels.data.map((label) => (
+                      <LabelRow
                         key={label.id}
                         label={label}
                         deleting={removeLabel.isPending && labelDeleteConfirmation === label.id}
@@ -493,41 +455,36 @@ export function AgentSettings(props: {
                         onDelete={() => removeLabel.mutate(label.id)}
                       />
                     ))}
-                  </div>
-                </section>
+                  </ul>
+                )}
+              </SettingsPanel>
+            </SettingsBlock>
 
-                <section>
-                  <div className="mb-3 flex items-center justify-between gap-4 px-1">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-[14px] font-semibold text-slate-900">Playbooks</h2>
-                      <Badge variant="outline" className="h-5 px-1.5 text-[9.5px] font-normal">
-                        {playbooks.data?.filter((item) => item.enabled).length ?? 0} active
-                      </Badge>
-                    </div>
-                    <Button size="sm" onClick={() => openEditor()}>
-                      <PlusIcon className="h-4 w-4" />
-                      New playbook
-                    </Button>
-                  </div>
-
-                  {playbooks.isLoading && <PlaybookSkeleton />}
-                  {playbooks.isError && (
-                    <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-left text-[12px] text-red-700">
-                      Couldn’t load playbooks.
-                    </div>
-                  )}
-                  {playbooks.data?.length === 0 && (
-                    <div className="flex items-center gap-3 rounded-lg border bg-background px-4 py-4">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        <SparklesIcon className="h-4 w-4" />
-                      </span>
-                      <p className="text-sm text-muted-foreground">No playbooks yet</p>
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    {playbooks.data?.map((playbook) => (
-                      <PlaybookCard
+            <SettingsBlock
+              id="playbooks-heading"
+              title="Playbooks"
+              description={
+                playbooks.data?.length
+                  ? `${activePlaybookCount} of ${playbooks.data.length} active. A matching playbook is combined with Base Instructions.`
+                  : "Guidance for specific support scenarios, combined with Base Instructions when a conversation matches."
+              }
+              action={
+                <Button variant="outline" size="sm" onClick={() => openEditor()}>
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  New playbook
+                </Button>
+              }
+            >
+              <SettingsPanel>
+                {playbooks.isLoading && <ListSkeleton />}
+                {playbooks.isError && <ListMessage tone="error">Couldn’t load playbooks.</ListMessage>}
+                {playbooks.data?.length === 0 && (
+                  <ListMessage icon={<SparklesIcon className="h-4 w-4" />}>No playbooks yet</ListMessage>
+                )}
+                {playbooks.data && playbooks.data.length > 0 && (
+                  <ul className="divide-y">
+                    {playbooks.data.map((playbook) => (
+                      <PlaybookRow
                         key={playbook.id}
                         playbook={playbook}
                         toggling={togglePlaybook.isPending}
@@ -540,13 +497,17 @@ export function AgentSettings(props: {
                         onDelete={() => removePlaybook.mutate(playbook.id)}
                       />
                     ))}
-                  </div>
-                </section>
+                  </ul>
+                )}
+              </SettingsPanel>
+            </SettingsBlock>
 
-                <section className="flex flex-col gap-3 border-t px-1 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <SettingsBlock id="danger-zone-heading" title="Danger zone">
+              <SettingsPanel className="border-destructive/25">
+                <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div className="min-w-0">
-                    <h2 className="text-sm font-medium text-foreground">Delete inbox</h2>
-                    <p className="mt-1 break-words text-sm leading-5 text-muted-foreground">
+                    <p className="text-[13.5px] font-medium text-foreground">Delete inbox</p>
+                    <p className="mt-1 break-words text-[13px] leading-5 text-muted-foreground">
                       Permanently deletes {mailbox.address} and all of its conversations.
                     </p>
                   </div>
@@ -559,18 +520,31 @@ export function AgentSettings(props: {
                       setDeleteInboxOpen(true);
                     }}
                   >
+                    <TrashIcon className="h-3.5 w-3.5" />
                     Delete inbox
                   </Button>
-                </section>
-              </>
-            ) : (
-              <div className="rounded-xl border border-slate-200 bg-white p-10 text-left text-sm text-slate-500">
+                </div>
+              </SettingsPanel>
+            </SettingsBlock>
+          </>
+        ) : (
+          <SettingsPanel>
+            <div className="flex flex-col items-center px-6 py-12 text-center">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <SparklesIcon className="h-[18px] w-[18px]" />
+              </span>
+              <p className="mt-3 text-[13px] font-medium text-foreground">No inbox to configure</p>
+              <p className="mt-1 text-[12.5px] text-muted-foreground">
                 Add an inbox before configuring the agent.
-              </div>
-            )}
-          </main>
-        </div>
-      </div>
+              </p>
+              <Button className="mt-4" onClick={openMailboxEditor}>
+                <PlusIcon className="h-4 w-4" />
+                Add inbox
+              </Button>
+            </div>
+          </SettingsPanel>
+        )}
+      </SettingsPage>
 
       {editor && (
         <PlaybookEditor
@@ -903,7 +877,7 @@ function parseInboxAddress(value: string): InboxSetupState | null {
   return validLocalPart && validDomain ? { address, localPart, domainName } : null;
 }
 
-function PlaybookCard(props: {
+function PlaybookRow(props: {
   playbook: Playbook;
   toggling: boolean;
   deleting: boolean;
@@ -914,83 +888,126 @@ function PlaybookCard(props: {
   onCancelDelete: () => void;
   onDelete: () => void;
 }) {
+  const enabled = Boolean(props.playbook.enabled);
   return (
-    <Card className={`p-4 sm:p-5 ${props.playbook.enabled ? "" : "opacity-65"}`}>
-      <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
-          <SparklesIcon className="h-[18px] w-[18px]" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[13px] font-semibold text-slate-900">{props.playbook.name}</h3>
-            {!props.playbook.enabled && (
-              <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">
-                Disabled
-              </span>
-            )}
-          </div>
-          <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-slate-500">
-            {props.playbook.when_to_use}
-          </p>
-        </div>
+    <ListRow
+      title={props.playbook.name}
+      badge={
+        !enabled && (
+          <Badge variant="secondary" className="h-5 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground">
+            Disabled
+          </Badge>
+        )
+      }
+      muted={!enabled}
+      description={props.playbook.when_to_use}
+      detail={props.playbook.instructions}
+      entity="playbook"
+      deleting={props.deleting}
+      confirmDelete={props.confirmDelete}
+      onEdit={props.onEdit}
+      onRequestDelete={props.onRequestDelete}
+      onCancelDelete={props.onCancelDelete}
+      onDelete={props.onDelete}
+      leading={
         <Switch
-          aria-label={`${props.playbook.enabled ? "Disable" : "Enable"} ${props.playbook.name}`}
+          aria-label={`${enabled ? "Disable" : "Enable"} ${props.playbook.name}`}
           onCheckedChange={props.onToggle}
-          checked={Boolean(props.playbook.enabled)}
+          checked={enabled}
           disabled={props.toggling}
+          className="mt-0.5"
         />
-      </div>
+      }
+    />
+  );
+}
 
-      <div className="mt-4 border-t pt-3">
-        <p className="text-[9px] font-semibold tracking-wide text-slate-400 uppercase">How to reply</p>
-        <p className="mt-1 line-clamp-3 text-[11.5px] leading-relaxed text-slate-600">
-          {props.playbook.instructions}
+function ListRow(props: {
+  title: string;
+  badge?: React.ReactNode;
+  description: string;
+  detail?: string;
+  muted?: boolean;
+  entity: string;
+  leading: React.ReactNode;
+  deleting: boolean;
+  confirmDelete: boolean;
+  onEdit: () => void;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <li className="group flex items-start gap-3 px-4 py-3.5 sm:px-5">
+      <span className="flex h-6 shrink-0 items-center">{props.leading}</span>
+      <div className={`min-w-0 flex-1 transition-opacity ${props.muted ? "opacity-60" : ""}`}>
+        <div className="flex min-h-6 flex-wrap items-center gap-2">
+          <h3 className="text-[13.5px] font-medium text-foreground">{props.title}</h3>
+          {props.badge}
+        </div>
+        <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-muted-foreground">
+          {props.description}
         </p>
-      </div>
-
-      <div className="mt-3 flex items-center justify-end gap-3">
-        {props.confirmDelete ? (
-          <div className="flex items-center gap-1.5">
-            <span className="mr-1 text-[10px] text-red-600">Delete this playbook?</span>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={props.onCancelDelete}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="xs"
-              onClick={props.onDelete}
-              disabled={props.deleting}
-            >
-              {props.deleting ? "Deleting…" : "Delete"}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={props.onEdit}
-            >
-              <PencilIcon className="h-3.5 w-3.5" />
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={props.onRequestDelete}
-              className="text-muted-foreground hover:text-destructive"
-              aria-label={`Delete ${props.playbook.name}`}
-            >
-              <TrashIcon className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+        {props.detail && (
+          <p className="mt-1 line-clamp-1 text-xs leading-5 text-muted-foreground/90">
+            <span className="font-medium text-foreground/70">How to reply · </span>
+            {props.detail}
+          </p>
         )}
       </div>
-    </Card>
+      {props.confirmDelete ? (
+        <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label={`Confirm delete ${props.title}`}>
+          <span className="mr-1 hidden text-xs text-destructive sm:inline">Delete this {props.entity}?</span>
+          <Button variant="ghost" size="sm" onClick={props.onCancelDelete}>
+            Cancel
+          </Button>
+          <Button variant="destructive" size="sm" onClick={props.onDelete} disabled={props.deleting}>
+            {props.deleting ? "Deleting…" : "Delete"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={props.onEdit}
+            className="text-muted-foreground"
+            aria-label={`Edit ${props.title}`}
+            title="Edit"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={props.onRequestDelete}
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            aria-label={`Delete ${props.title}`}
+            title="Delete"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ListMessage(props: { icon?: React.ReactNode; tone?: "error"; children: React.ReactNode }) {
+  return (
+    <div
+      role={props.tone === "error" ? "alert" : undefined}
+      className={`flex items-center gap-3 px-4 py-4 text-[13px] sm:px-5 ${
+        props.tone === "error" ? "bg-destructive/5 text-destructive" : "text-muted-foreground"
+      }`}
+    >
+      {props.icon && (
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+          {props.icon}
+        </span>
+      )}
+      {props.children}
+    </div>
   );
 }
 
@@ -1004,7 +1021,7 @@ function MailboxSelect(props: {
       value={props.selectedMailboxId === null ? undefined : String(props.selectedMailboxId)}
       onValueChange={(value) => props.onSelect(Number(value))}
     >
-      <SelectTrigger className="h-10 w-full text-sm" aria-label="Inbox">
+      <SelectTrigger className="h-9 w-full bg-background text-sm" aria-label="Inbox to configure">
         <SelectValue placeholder="Choose inbox" />
       </SelectTrigger>
       <SelectContent>
@@ -1079,7 +1096,7 @@ function PlaybookEditor(props: {
           </Field>
 
           <label className="flex cursor-pointer items-center justify-between rounded-lg border bg-muted/40 px-3.5 py-3">
-            <span className="text-[12px] font-medium text-slate-700">Enabled</span>
+            <span className="text-[13px] font-medium text-foreground">Enabled</span>
             <Switch
               checked={props.state.enabled}
               onCheckedChange={(enabled) => update({ enabled })}
@@ -1087,7 +1104,7 @@ function PlaybookEditor(props: {
           </label>
 
           {props.error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs leading-5 text-destructive">
               Couldn’t save this playbook. Check the fields and try again.
             </p>
           )}
@@ -1115,13 +1132,13 @@ function PlaybookEditor(props: {
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[12px] font-semibold text-slate-700">{props.label}</span>
+      <span className="text-[13px] font-medium text-foreground">{props.label}</span>
       <span className="mt-1.5 block">{props.children}</span>
     </label>
   );
 }
 
-function LabelCard(props: {
+function LabelRow(props: {
   label: Label;
   deleting: boolean;
   confirmDelete: boolean;
@@ -1131,64 +1148,18 @@ function LabelCard(props: {
   onDelete: () => void;
 }) {
   return (
-    <Card className="p-4 sm:p-5">
-      <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
-          <TagIcon className="h-[18px] w-[18px]" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[13px] font-semibold text-slate-900">{props.label.name}</h3>
-          </div>
-          <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-slate-500">
-            {props.label.condition}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center justify-end gap-3">
-        {props.confirmDelete ? (
-          <div className="flex items-center gap-1.5">
-            <span className="mr-1 text-[10px] text-red-600">Delete this label?</span>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={props.onCancelDelete}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="xs"
-              onClick={props.onDelete}
-              disabled={props.deleting}
-            >
-              {props.deleting ? "Deleting…" : "Delete"}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={props.onEdit}
-            >
-              <PencilIcon className="h-3.5 w-3.5" />
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={props.onRequestDelete}
-              className="text-muted-foreground hover:text-destructive"
-              aria-label={`Delete ${props.label.name}`}
-            >
-              <TrashIcon className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
-      </div>
-    </Card>
+    <ListRow
+      title={props.label.name}
+      description={props.label.condition}
+      entity="label"
+      deleting={props.deleting}
+      confirmDelete={props.confirmDelete}
+      onEdit={props.onEdit}
+      onRequestDelete={props.onRequestDelete}
+      onCancelDelete={props.onCancelDelete}
+      onDelete={props.onDelete}
+      leading={<TagIcon className="h-4 w-4 text-muted-foreground" />}
+    />
   );
 }
 
@@ -1230,13 +1201,13 @@ function LabelEditor(props: {
               placeholder="Apply when the sender pitches writing a guest article for our blog, or asks us to publish their contributed post."
               rows={4}
             />
-            <span className="mt-1.5 block text-[11px] leading-4 text-muted-foreground">
+            <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
               New incoming emails are checked against this description. Replies in existing conversations are not labeled.
             </span>
           </Field>
 
           {props.error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs leading-5 text-destructive">
               {props.errorMessage ?? "Couldn’t save this label. Check the fields and try again."}
             </p>
           )}
@@ -1261,17 +1232,15 @@ function LabelEditor(props: {
   );
 }
 
-function PlaybookSkeleton() {
+function ListSkeleton() {
   return (
-    <div className="space-y-3">
+    <div className="divide-y" aria-busy="true">
       {[0, 1].map((item) => (
-        <div key={item} className="animate-pulse rounded-xl border border-slate-200 bg-white p-5">
-          <div className="flex items-center gap-3">
-            <span className="h-9 w-9 rounded-xl bg-slate-100" />
-            <div className="flex-1 space-y-2">
-              <span className="block h-3 w-1/4 rounded bg-slate-100" />
-              <span className="block h-2.5 w-3/4 rounded bg-slate-100" />
-            </div>
+        <div key={item} className="flex animate-pulse items-start gap-3 px-4 py-4 sm:px-5">
+          <span className="h-5 w-5 rounded bg-muted" />
+          <div className="flex-1 space-y-2">
+            <span className="block h-3 w-1/4 rounded bg-muted" />
+            <span className="block h-2.5 w-3/4 rounded bg-muted/70" />
           </div>
         </div>
       ))}

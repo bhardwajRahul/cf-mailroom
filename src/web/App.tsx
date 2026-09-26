@@ -12,6 +12,7 @@ import {
 import { fetchLabels, fetchMailboxes, fetchThreads, searchThreads } from "./api";
 import { AgentSettings } from "./components/AgentSettings";
 import { GeneralSettings } from "./components/GeneralSettings";
+import { InboxIcon } from "./components/Icons";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadList, type ThreadFilter } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
@@ -179,7 +180,7 @@ function Workspace(props: {
     threads.data?.length === 0;
 
   return (
-    <div className="flex h-dvh min-h-[560px] overflow-hidden bg-background text-foreground antialiased">
+    <div className="flex h-dvh min-h-[560px] overflow-hidden bg-background text-foreground">
       <Sidebar
         mailboxes={mailboxes.data ?? []}
         selected={selectedMailbox}
@@ -250,11 +251,37 @@ function Workspace(props: {
                 onArchived={() => navigate({ pathname: listPath, search: location.search })}
               />
             ) : (
-              <div className="h-full bg-muted/20" />
+              <EmptyReadingPane empty={inboxIsEmpty} />
             )}
           </main>
         </>
       )}
+    </div>
+  );
+}
+
+function EmptyReadingPane(props: { empty: boolean }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center bg-canvas px-6 pb-16 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full border bg-background text-muted-foreground">
+        <InboxIcon className="h-5 w-5" />
+      </span>
+      <p className="mt-3 text-[13px] font-medium text-foreground">
+        {props.empty ? "Nothing here yet" : "No conversation selected"}
+      </p>
+      <p className="mt-1 max-w-64 text-[12.5px] leading-5 text-muted-foreground">
+        {props.empty ? (
+          "New email sent to your inboxes will appear in the list."
+        ) : (
+          <>
+            Choose one from the list, or press{" "}
+            <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-background px-1 align-[1px] font-sans text-[11px] font-medium">
+              /
+            </kbd>{" "}
+            to search.
+          </>
+        )}
+      </p>
     </div>
   );
 }
