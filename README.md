@@ -159,32 +159,13 @@ the two write tools are registered only when the token includes `inbox.send`
 and the instance-level emergency switch `MCP_SEND_ENABLED=true`. Set that
 variable to `false` to remove write tools from every client immediately.
 
-### Configure OAuth
+### Deploy the MCP server
 
-1. Copy `wrangler.mcp.example.jsonc` to `wrangler.mcp.jsonc` (gitignored — it
-   holds your Access AUD, owner emails, and hostnames). Create a KV namespace
-   and bind it as `OAUTH_KV`. OAuth clients, grants, authorization codes, and
-   tokens live there. Fill in `MCP_HOSTNAME`, `WEB_APP_URL`, `TEAM_DOMAIN`, and
-   `MCP_ALLOWED_EMAILS`.
-2. In Cloudflare Zero Trust, create a Self-hosted Access application for the
-   exact destination `<MCP_HOSTNAME>/authorize` — this works before the Worker
-   exists. Restrict its Allow policy to the instance owner's email and leave
-   **Managed OAuth off**. The discovery, client registration, token,
-   revocation, and `/v1` endpoints must remain publicly reachable; only the
-   interactive consent page is behind Access.
-3. Copy that Access application's **AUD tag** into `POLICY_AUD`, then deploy
-   once with `npm run deploy:mcp` (the custom domain is created for you).
-
-`POLICY_AUD` is application-specific and is safe to publish, but it must match
-the Access application protecting `/authorize`. If you deploy before setting
-the real AUD, owner consent fails until you set it and redeploy.
-
-The OAuth Worker performs discovery, client registration, token exchange,
-refresh, and revocation. On every consent request it independently validates
-the `Cf-Access-Jwt-Assertion` against the team JWKS, issuer, AUD, and owner
-allowlist before issuing a grant. Do not protect the whole MCP hostname with
-Access: that would intercept standards-based OAuth endpoints before MCP clients
-can discover or register.
+Setup lives in the deployment guide: [connect an AI agent over
+MCP](docs/deployment.md#optional-connect-an-ai-agent-over-mcp). The MCP Worker
+is configured in `wrangler.mcp.jsonc` (gitignored), protected by a separate
+Access application that covers **only `/authorize`**, and deployed manually
+with `npm run deploy:mcp`.
 
 ## Roadmap
 

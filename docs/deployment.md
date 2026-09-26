@@ -115,23 +115,35 @@ R2 resources. Do not create an empty second database or bucket for MCP.
 
 1. Clone the repository Cloudflare created for you and run `npm ci` using
    Node.js 22.18+ or 24+, then `npx wrangler login`.
-2. Copy `wrangler.mcp.example.jsonc` to `wrangler.mcp.jsonc`. Copy the actual
-   `DB` and `RAW` values from your web Worker's `wrangler.jsonc`. Use the same
+2. Copy `wrangler.mcp.example.jsonc` to `wrangler.mcp.jsonc` (gitignored — it
+   holds your Access AUD, owner emails, and hostnames). Copy the actual `DB`
+   and `RAW` values from your web Worker's `wrangler.jsonc`. Use the same
    Cloudflare account and database name so MCP reuses the existing database.
 3. Run `npx wrangler kv namespace create mailroom-mcp-oauth` and copy the
-   returned ID into `OAUTH_KV`. Pick a hostname on a domain in your Cloudflare
-   account (e.g. `mcp.example.com`) and set it in both `routes` and
-   `MCP_HOSTNAME`. Fill in `WEB_APP_URL`, `TEAM_DOMAIN`, and
-   `MCP_ALLOWED_EMAILS`.
-4. Follow [Configure OAuth](../README.md#configure-oauth): create an Access
-   application for **only `/authorize`** (the hostname does not need to exist
-   yet), copy its AUD into `POLICY_AUD`, then deploy once with
-   `npm run deploy:mcp`. Leave discovery, token, registration, and `/v1`
-   publicly reachable for OAuth.
-5. Add `https://<your-mcp-hostname>/v1` to your MCP client and authorize it.
+   returned ID into `OAUTH_KV`. OAuth clients, grants, authorization codes, and
+   tokens live there. Pick a hostname on a domain in your Cloudflare account
+   (e.g. `mcp.example.com`) and set it in both `routes` and `MCP_HOSTNAME`.
+   Fill in `WEB_APP_URL`, `TEAM_DOMAIN`, and `MCP_ALLOWED_EMAILS`.
+4. In Cloudflare Zero Trust, create a Self-hosted Access application for the
+   exact destination `<MCP_HOSTNAME>/authorize` — this works before the Worker
+   exists. Restrict its Allow policy to the instance owner's email and leave
+   **Managed OAuth off**. The discovery, client registration, token,
+   revocation, and `/v1` endpoints must remain publicly reachable; only the
+   interactive consent page is behind Access. Do not protect the whole MCP
+   hostname: that would intercept standards-based OAuth endpoints before MCP
+   clients can discover or register.
+5. Copy that Access application's **AUD tag** into `POLICY_AUD`, then deploy
+   once with `npm run deploy:mcp` (the custom domain is created for you).
+   `POLICY_AUD` is application-specific and safe to publish, but it must match
+   the Access application protecting `/authorize`. If you deploy before setting
+   the real AUD, owner consent fails until you set it and redeploy.
+6. Add `https://<your-mcp-hostname>/v1` to your MCP client and authorize it.
 
-The MCP config is gitignored. `npm run deploy:mcp` is a separate manual
-deployment; the web Worker's Git integration does not deploy it.
+On every consent request the Worker independently validates the
+`Cf-Access-Jwt-Assertion` against the team JWKS, issuer, AUD, and owner
+allowlist before issuing a grant. The MCP config is gitignored;
+`npm run deploy:mcp` is a separate manual deployment — the web Worker's Git
+integration does not deploy it.
 
 ## Optional: browser notifications
 
