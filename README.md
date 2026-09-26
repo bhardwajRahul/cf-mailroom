@@ -17,8 +17,8 @@ Then protect it with Cloudflare Access and connect your email domain.
 The MCP server and browser notifications are optional, separate setup steps.
 
 **Start here: [Cloudflare deployment guide](docs/deployment.md).** You need a
-domain on Cloudflare, R2 enabled, and Workers Paid for outbound email. The deploy
-button works for other users once this repository is public.
+domain on Cloudflare, R2 enabled, and Workers Paid for outbound email. The
+deploy button requires this repository to be public.
 
 ## Architecture
 
@@ -164,22 +164,20 @@ variable to `false` to remove write tools from every client immediately.
 1. Copy `wrangler.mcp.example.jsonc` to `wrangler.mcp.jsonc` (gitignored — it
    holds your Access AUD, owner emails, and hostnames). Create a KV namespace
    and bind it as `OAUTH_KV`. OAuth clients, grants, authorization codes, and
-   tokens live there.
-2. Deploy the MCP Worker once with `npm run deploy:mcp` so its custom hostname
-   exists.
-3. In Cloudflare Zero Trust, create a Self-hosted Access application for the
-   exact destination `<MCP_HOSTNAME>/authorize`. Restrict its Allow
-   policy to the instance owner's email and leave **Managed OAuth off**. The
-   discovery, client registration, token, revocation, and `/v1` endpoints must
-   remain publicly reachable; only the interactive consent page is behind
-   Access.
-4. Copy that Access application's **AUD tag** into `POLICY_AUD`, set the owner
-   email in `MCP_ALLOWED_EMAILS`, then redeploy.
+   tokens live there. Fill in `MCP_HOSTNAME`, `WEB_APP_URL`, `TEAM_DOMAIN`, and
+   `MCP_ALLOWED_EMAILS`.
+2. In Cloudflare Zero Trust, create a Self-hosted Access application for the
+   exact destination `<MCP_HOSTNAME>/authorize` — this works before the Worker
+   exists. Restrict its Allow policy to the instance owner's email and leave
+   **Managed OAuth off**. The discovery, client registration, token,
+   revocation, and `/v1` endpoints must remain publicly reachable; only the
+   interactive consent page is behind Access.
+3. Copy that Access application's **AUD tag** into `POLICY_AUD`, then deploy
+   once with `npm run deploy:mcp` (the custom domain is created for you).
 
 `POLICY_AUD` is application-specific and is safe to publish, but it must match
-the Access application protecting `/authorize`. A first deploy with a
-placeholder can create the hostname; owner consent works only after the real
-AUD is configured and the Worker is redeployed.
+the Access application protecting `/authorize`. If you deploy before setting
+the real AUD, owner consent fails until you set it and redeploy.
 
 The OAuth Worker performs discovery, client registration, token exchange,
 refresh, and revocation. On every consent request it independently validates

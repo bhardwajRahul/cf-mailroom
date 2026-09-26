@@ -4,6 +4,8 @@
   "name": "mailroom",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",
+  // Preview deployments would expose the app publicly; keep them off.
+  "preview_urls": false,
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/cdn-cgi/handler/email"]

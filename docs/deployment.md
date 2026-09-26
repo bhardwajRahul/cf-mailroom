@@ -8,12 +8,21 @@ email domain setup. No local CLI or API keys are needed for the initial web app.
 - A GitHub account and a Cloudflare account.
 - A domain using Cloudflare DNS for receiving and sending email.
 - R2 enabled on the Cloudflare account (Cloudflare may ask for billing details).
-- Workers Paid for sending email to arbitrary recipients through
+- Workers Paid (~$5/month) for sending email to arbitrary recipients through
   [Email Sending](https://developers.cloudflare.com/email-service/).
-- A Cloudflare Zero Trust team for protecting the web app with Access.
+- A Cloudflare Zero Trust team for protecting the web app with Access (the free
+  plan is enough).
 
 Workers, D1, R2, Queues, and Workers AI usage belongs to your account and is
 subject to Cloudflare's quotas and billing. This is not a promise of free hosting.
+
+## At a glance
+
+1. Deploy with the button — storage, queues, and migrations are automatic.
+2. Put the app behind Cloudflare Access. Until you do, it is publicly readable.
+3. Connect your email domain (Email Routing in, Email Sending out).
+4. Add an Inbox in Settings and send yourself a test email.
+5. Optionally connect an agent over MCP and enable browser notifications.
 
 ## 1. Deploy the web app
 
@@ -29,6 +38,9 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
    resources in your account and writes their values into your new repository.
    In `wrangler.jsonc`, the consumer's `queue` must match `DRAFT_QUEUE` and its
    `dead_letter_queue` must match `DRAFT_DLQ`, including if you rename them.
+
+   The repository Cloudflare creates belongs to you — your instance lives there.
+   Upstream changes do not arrive automatically; see [Updates](#updates).
 4. Set the **deploy command** to `npm run deploy`. You can leave the **build
    command** empty because the deploy script builds the app itself. If Cloudflare
    pre-fills `npm run build`, clearing it avoids building twice.
@@ -57,8 +69,9 @@ uses that ID when present.
 
 ## 2. Protect the web app before adding email
 
-The web API has no built-in login. Anyone who can reach it can read and change
-your inbox, so finish Access setup before registering an Inbox or routing mail.
+The web API has no built-in login. From the moment the deploy finishes until
+Access is configured, **anyone who finds the Worker's URL can read all mail in
+the app**. Do this step immediately, before registering an Inbox or routing mail.
 
 1. In your Worker's **Settings → Domains & Routes**, choose the public web
    address. A custom domain such as `inbox.example.com` is recommended.
@@ -106,11 +119,15 @@ R2 resources. Do not create an empty second database or bucket for MCP.
    `DB` and `RAW` values from your web Worker's `wrangler.jsonc`. Use the same
    Cloudflare account and database name so MCP reuses the existing database.
 3. Run `npx wrangler kv namespace create mailroom-mcp-oauth` and copy the
-   returned ID into `OAUTH_KV`. Set your MCP hostname, `WEB_APP_URL`, Zero Trust
-   team domain, and owner email in the MCP config.
-4. Follow [Configure OAuth](../README.md#configure-oauth) to deploy and protect
-   **only `/authorize`** with a separate Access application, then set its AUD.
-   Leave discovery, token, registration, and `/v1` publicly reachable for OAuth.
+   returned ID into `OAUTH_KV`. Pick a hostname on a domain in your Cloudflare
+   account (e.g. `mcp.example.com`) and set it in both `routes` and
+   `MCP_HOSTNAME`. Fill in `WEB_APP_URL`, `TEAM_DOMAIN`, and
+   `MCP_ALLOWED_EMAILS`.
+4. Follow [Configure OAuth](../README.md#configure-oauth): create an Access
+   application for **only `/authorize`** (the hostname does not need to exist
+   yet), copy its AUD into `POLICY_AUD`, then deploy once with
+   `npm run deploy:mcp`. Leave discovery, token, registration, and `/v1`
+   publicly reachable for OAuth.
 5. Add `https://<your-mcp-hostname>/v1` to your MCP client and authorize it.
 
 The MCP config is gitignored. `npm run deploy:mcp` is a separate manual
@@ -142,6 +159,22 @@ Do not point preview branches or a second instance at the production database
 and queues. Schema migrations change stored data; a Worker rollback does not
 undo a database migration.
 
+### Pull upstream changes
+
+The button created your own repository, so upstream fixes do not arrive
+automatically. To update:
+
+```sh
+git remote add upstream https://github.com/wong2/cf-mailroom.git
+git fetch upstream
+git merge upstream/main
+git push
+```
+
+Keep your own values when conflicts touch instance-specific files:
+`wrangler.jsonc` holds your Worker and resource names, and `wrangler.mcp.jsonc`
+is not tracked at all.
+
 ## Manual setup / an existing fork
 
 If you already forked the repository instead of using the button, create and
@@ -171,6 +204,10 @@ deploy automatically. Continue with Access and domain setup above.
 ## Troubleshooting
 
 - **Button cannot import the repository:** the upstream repository must be public.
+- **A push did not trigger a deployment:** check that the repository is still
+  connected under the Worker's **Settings → Build** and that the deploy command
+  is `npm run deploy`. Builds only run on the production branch (normally
+  `main`).
 - **D1 database not found:** check the `DB` binding in your instance's config;
   `database_name` must match a database in the authenticated Cloudflare account.
   For manual setup, create it before running migrations. If an explicit
