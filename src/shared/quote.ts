@@ -7,7 +7,7 @@
 export function splitQuotedTail(body: string): { main: string; quoted: string | null } {
   const lines = body.split("\n");
   const attributionRe =
-    /^(On .{4,80}(wrote|writes):\s*$|在.{4,60}写道[:：]\s*$|-{3,}\s*Original Message\s*-{3,}|________________________________)/i;
+    /^(On .{4,80}(wrote|writes):\s*$|-{3,}\s*Original Message\s*-{3,}|________________________________)/i;
 
   let cut = -1;
   for (let i = 0; i < lines.length; i++) {

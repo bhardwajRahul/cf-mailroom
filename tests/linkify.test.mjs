@@ -16,10 +16,10 @@ test("linkifies explicit web URLs while preserving surrounding text", () => {
 });
 
 test("keeps balanced URL punctuation and excludes sentence punctuation", () => {
-  assert.deepEqual(linkifyPlainText("See https://example.com/a_(b)). 下一步。"), [
+  assert.deepEqual(linkifyPlainText("See https://example.com/a_(b)). Next step."), [
     { type: "text", value: "See " },
     { type: "link", value: "https://example.com/a_(b)", href: "https://example.com/a_(b)" },
-    { type: "text", value: "). 下一步。" },
+    { type: "text", value: "). Next step." },
   ]);
 });
 

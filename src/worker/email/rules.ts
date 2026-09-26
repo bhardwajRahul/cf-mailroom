@@ -2,13 +2,13 @@ import type { Address, Email } from "postal-mime";
 
 export function normalizeSubject(subject: string): string {
   return subject
-    .replace(/^(\s*(re|fwd?|aw|回复|转发)\s*:\s*)+/i, "")
+    .replace(/^(\s*(re|fwd?|aw)\s*:\s*)+/i, "")
     .trim()
     .toLowerCase();
 }
 
 export function hasReplyPrefix(subject: string): boolean {
-  return /^(\s*(re|aw|回复)\s*:\s*)/i.test(subject);
+  return /^(\s*(re|aw)\s*:\s*)/i.test(subject);
 }
 
 export function addressOf(address: Address | undefined): string {

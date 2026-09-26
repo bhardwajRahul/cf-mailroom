@@ -1,7 +1,7 @@
-# 发布流程
+# Release process
 
-上线通过推送到 GitHub 的 `main` 分支触发自动构建和部署。
+Shipping happens by pushing to the GitHub `main` branch, which triggers the automatic build and deploy.
 
-- 用户要求“上线”或“部署”时，完成必要验证、提交改动并执行 `git push`，然后检查自动部署结果。
-- 除非用户明确要求手动部署，否则不要运行 `npm run deploy`、`wrangler deploy` 或通过 Cloudflare API 直接发布。
-- 用户同时要求“上线并 push”时，push 就是发布步骤，不要先手动部署再 push。
+- When the user asks to ship or deploy, finish the necessary checks, commit the changes, run `git push`, then check the automatic deployment result.
+- Do not run `npm run deploy`, `wrangler deploy`, or publish through the Cloudflare API unless the user explicitly asks for a manual deploy.
+- When the user asks to ship and push, the push is the release step. Do not deploy manually before pushing.

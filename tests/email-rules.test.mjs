@@ -12,7 +12,7 @@ import {
 } from "../src/worker/email/rules.ts";
 
 test("normalizes localized reply subjects but only treats replies as fallback candidates", () => {
-  assert.equal(normalizeSubject(" Re: AW: 回复: Refund request "), "refund request");
+  assert.equal(normalizeSubject(" Re: AW: Fwd: Refund request "), "refund request");
   assert.equal(hasReplyPrefix("Re: Refund request"), true);
   assert.equal(hasReplyPrefix("Refund request"), false);
   assert.equal(hasReplyPrefix("Fwd: Refund request"), false);
