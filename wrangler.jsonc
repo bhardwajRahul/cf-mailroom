@@ -1,5 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // Resource names identify this deployment; every instance chooses its own.
   "name": "agentic-inbox",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",

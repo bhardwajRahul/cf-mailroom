@@ -27,7 +27,7 @@ export async function receiveEmail(
   const rawBuffer = await new Response(message.raw).arrayBuffer();
   const fingerprint = await rawFingerprint(rawBuffer);
   const parsed = await PostalMime.parse(rawBuffer);
-  const messageId = parsed.messageId ?? `<raw-${fingerprint}@agentic-inbox>`;
+  const messageId = parsed.messageId ?? `<raw-${fingerprint}@mailroom.invalid>`;
 
   const duplicate = await env.DB.prepare(
     `SELECT msg.id, msg.thread_id, msg.is_auto_submitted

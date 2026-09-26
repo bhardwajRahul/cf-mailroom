@@ -1,7 +1,7 @@
 // Copy to wrangler.mcp.jsonc and fill in your own values. See README "Configure OAuth".
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "agentic-inbox-mcp",
+  "name": "mailroom-mcp",
   "workers_dev": false,
   "main": "src/mcp/index.ts",
   "compatibility_date": "2026-08-01",
@@ -17,14 +17,14 @@
     {
       "binding": "DB",
       // Same database name and Cloudflare account as the deployed Web Worker.
-      "database_name": "agentic-inbox",
+      "database_name": "mailroom",
       "migrations_dir": "migrations"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",
-      // Create with: wrangler kv namespace create agentic-inbox-mcp-oauth
+      // Create with: wrangler kv namespace create mailroom-mcp-oauth
       "id": "00000000000000000000000000000000"
     }
   ],
@@ -36,7 +36,7 @@
   "r2_buckets": [
     {
       "binding": "RAW",
-      "bucket_name": "agentic-inbox-raw"
+      "bucket_name": "mailroom-raw"
     }
   ],
   "vars": {
@@ -50,7 +50,7 @@
     "MCP_DAILY_SEND_LIMIT": "100",
     "MCP_HOSTNAME": "mcp.example.com",
     // Public URL of the deployed Web Worker
-    "WEB_APP_URL": "https://agentic-inbox.your-subdomain.workers.dev"
+    "WEB_APP_URL": "https://mailroom.your-subdomain.workers.dev"
   },
   "observability": {
     "enabled": true

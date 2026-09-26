@@ -81,8 +81,9 @@ npm run dev
 For each domain that should receive mail:
 
 1. Move the domain's DNS to Cloudflare and enable **Email Routing**.
-2. Set the catch-all rule (or specific addresses) to **Send to Worker →
-   agentic-inbox**. Multiple domains can all point at this one Worker.
+2. Set the catch-all rule (or specific addresses) to **Send to Worker → your
+   Mailroom Worker** (the name chosen at deployment). Multiple domains can all
+   point at this one Worker.
 3. Onboard the same domain to **Email Service** (dashboard → Email Service) so
    replies can be sent from it. Requires the Workers paid plan while Email
    Sending is in beta.

@@ -260,7 +260,7 @@ export async function getConversation(env: InboxDataEnv, id: number, limit: numb
     }
   }
 
-  const webOrigin = (env.WEB_APP_URL ?? "https://agentic-inbox.example.com").replace(/\/$/, "");
+  const webOrigin = (env.WEB_APP_URL ?? "https://mailroom.example.com").replace(/\/$/, "");
   return {
     conversation: {
       id: entityId("conversation", thread.id),

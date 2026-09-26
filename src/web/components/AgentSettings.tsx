@@ -675,7 +675,7 @@ export function AgentSettings(props: {
                       </label>
                       <p className="mt-1 text-sm leading-5 text-muted-foreground">
                         Onboard {inboxSetup.domainName}, then create a rule for {inboxSetup.address}:
-                        <span className="block">Send to a Worker → agentic-inbox.</span>
+                        <span className="block">Send to a Worker → the Worker running this Mailroom.</span>
                       </p>
                       <Button asChild type="button" variant="outline" size="sm" className="mt-3">
                         <a

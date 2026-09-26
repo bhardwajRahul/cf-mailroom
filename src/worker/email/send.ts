@@ -56,7 +56,7 @@ export async function sendEmail(env: SendEmailEnv, mail: OutgoingEmail): Promise
   if (mail.inReplyTo) headers["In-Reply-To"] = mail.inReplyTo;
   if (mail.references?.length) headers["References"] = mail.references.join(" ");
   if (mail.autoSubmitted) headers["Auto-Submitted"] = mail.autoSubmitted;
-  if (mail.attemptId) headers["X-Agentic-Inbox-Attempt"] = mail.attemptId;
+  if (mail.attemptId) headers["X-Mailroom-Attempt"] = mail.attemptId;
 
   const result = await env.EMAIL.send({
     from: mail.from.name
