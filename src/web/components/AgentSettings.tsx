@@ -671,11 +671,12 @@ export function AgentSettings(props: {
                         htmlFor="confirm-email-routing"
                         className="cursor-pointer text-sm font-medium"
                       >
-                        Configure incoming mail
+                        Email Routing is enabled
                       </label>
                       <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                        Onboard {inboxSetup.domainName}, then create a rule for {inboxSetup.address}:
-                        <span className="block">Send to a Worker → the Worker running this Mailroom.</span>
+                        Email Routing is on for {inboxSetup.domainName}. After this inbox is saved, add a
+                        rule for {inboxSetup.address}: Send to a Worker → the Worker running this Mailroom.
+                        Unknown recipients are rejected, so add that rule only after the inbox exists.
                       </p>
                       <Button asChild type="button" variant="outline" size="sm" className="mt-3">
                         <a

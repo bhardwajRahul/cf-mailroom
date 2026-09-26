@@ -38,7 +38,9 @@ new inbound Message ──► Web Push ──► subscribed browsers
 - **Multiple inboxes, one workspace.** Every receiving address is a row in
   `mailboxes`; the unified view queries across all of them. Mailboxes are added
   explicitly in Settings, and unknown recipient addresses are rejected. Each
-  mailbox has its own agent mode (`off` / `draft` / `auto`) and instructions.
+  mailbox has its own instructions. AI drafting stays off until you enable
+  **Draft replies to new messages**; that writes a draft for approval and never
+  sends on its own.
 - **Threading** follows RFC headers (`In-Reply-To` / `References`) with a
   sender-aware, reply-only normalized-subject fallback. New inbound mail
   reopens an archived Conversation.
@@ -76,34 +78,39 @@ npm run db:seed:local
 npm run dev
 ```
 
-### Wire up a domain
-
-For each domain that should receive mail:
-
-1. Move the domain's DNS to Cloudflare and enable **Email Routing**.
-2. Set the catch-all rule (or specific addresses) to **Send to Worker → your
-   Mailroom Worker** (the name chosen at deployment). Multiple domains can all
-   point at this one Worker.
-3. Onboard the same domain to **Email Service** (dashboard → Email Service) so
-   replies can be sent from it. Requires the Workers paid plan while Email
-   Sending is in beta.
-4. Add the Inbox in **Settings**. The app infers its Domain and only asks for
-   these Cloudflare steps when that Domain has not been configured before.
-
 > Local development uses `wrangler.dev.jsonc`, which omits the AI and outbound
 > email bindings. Inbound handling, the API, and the web UI remain available;
 > sending a real reply requires the deployed Worker.
 
+### Connect a receiving domain
+
+Production setup, including Access, is in the [deployment guide](docs/deployment.md).
+For each domain that should receive mail:
+
+1. Move the domain's DNS to Cloudflare and enable **Email Routing**. Install the
+   DNS records Cloudflare asks for. Do not point a routing rule at the Worker yet.
+2. Onboard the domain in **Email Sending** (dashboard → Email Service → Sending)
+   so replies can be sent from it. Requires the Workers paid plan while Email
+   Sending is in beta.
+3. Add the Inbox in **Settings**. The app infers its Domain and asks you to
+   confirm those Cloudflare steps only when that Domain has not been confirmed
+   before. New inboxes leave **Draft replies to new messages** off.
+4. Then point that address (or a catch-all) at **Send to Worker → your Mailroom
+   Worker**. Unknown recipient addresses are rejected, so a rule that arrives
+   before the Inbox bounces mail. A catch-all does not create Inboxes. Multiple
+   domains can share this one Worker.
+
 ### Test the inbound pipeline locally
 
-With `wrangler dev` running:
+With `npm run dev` running (Vite on port 5173):
 
 ```sh
 npm run email:test
 npm run email:test:attachment
 ```
 
-This POSTs `scripts/test-email.eml` to the local email handler endpoint.
+This POSTs `scripts/test-email.eml` to the local email handler. Use `npm run dev`,
+not `npx wrangler dev`: the test always targets port 5173 and `wrangler.dev.jsonc`.
 
 ### Web routes
 
@@ -172,7 +179,7 @@ with `npm run deploy:mcp`.
 - [x] Triage: per-inbox auto labels via `typesafe/jev` classification on new inbound mail
 - [ ] External tools for the draft agent (for example Stripe or product databases)
 - [ ] Delivery and bounce status inside the Conversation (available today in Cloudflare Email Logs)
-- [ ] Full-text search UI (backend `/api/search` already works)
+- [x] Full-text search in the conversation list (`/api/search` on `messages_fts`)
 
 ## License
 

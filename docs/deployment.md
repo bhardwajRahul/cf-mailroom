@@ -34,8 +34,10 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
    instance, the default names are fine. For additional instances, use different
    Worker, database, bucket, and queue names.
 3. Review the resource bindings: `DB` (D1), `RAW` (R2), `AI` (Workers AI),
-   `DRAFT_QUEUE`, and `DRAFT_DLQ` (two distinct queues). Cloudflare provisions the
-   resources in your account and writes their values into your new repository.
+   `EMAIL` (Email Sending; onboard the sender domain after deploy — the binding
+   does not verify it), `DRAFT_QUEUE`, and `DRAFT_DLQ` (two distinct queues).
+   Cloudflare provisions the resources in your account and writes their values
+   into your new repository.
    In `wrangler.jsonc`, the consumer's `queue` must match `DRAFT_QUEUE` and its
    `dead_letter_queue` must match `DRAFT_DLQ`, including if you rename them.
 
@@ -69,20 +71,32 @@ uses that ID when present.
 
 ## 2. Protect the web app before adding email
 
-The web API has no built-in login. From the moment the deploy finishes until
-Access is configured, **anyone who finds the Worker's URL can read all mail in
-the app**. Do this step immediately, before registering an Inbox or routing mail.
+The web API has no built-in login. `wrangler.jsonc` sets `workers_dev` and
+`preview_urls` to false, so the deploy does not publish a `workers.dev` hostname
+or preview URLs. The moment any hostname reaches the Worker, **anyone who opens
+it can read all mail** until Access is in place. Do this step before registering
+an Inbox or routing mail.
 
-1. In your Worker's **Settings → Domains & Routes**, choose the public web
-   address. A custom domain such as `inbox.example.com` is recommended.
+1. In your Worker's **Settings → Domains & Routes**, attach a custom domain such
+   as `inbox.example.com`.
 2. In **Zero Trust → Access → Applications**, add a **Self-hosted** application
-   covering the entire web hostname (all paths, including `/api/*`). Add an Allow
+   covering that entire hostname (all paths, including `/api/*`). Add an Allow
    policy restricted to your email address; do not use an Everyone or Bypass policy.
-3. Protect every enabled alternate hostname as well. If you use a custom domain,
-   disable the unprotected `workers.dev` route and preview URLs in the Worker
-   settings. Keep `workers_dev: false` and `preview_urls: false` in your fork's
-   `wrangler.jsonc` so subsequent deployments preserve that choice. Add your
-   custom domain to `routes` there as well.
+3. Put the same hostname in `routes`, and leave the two flags as they are in the
+   template:
+
+   ```jsonc
+   "workers_dev": false,
+   "preview_urls": false,
+   "routes": [
+     { "pattern": "inbox.example.com", "custom_domain": true }
+   ]
+   ```
+
+   A custom domain added only in the dashboard does not survive the next deploy
+   unless it is listed in `routes`. If `workers_dev` is removed and `routes` is
+   empty, Wrangler turns `workers.dev` back on, and that hostname is outside
+   the Access application.
 4. Open the web app in a private browser window: both the app and
    `/api/mailboxes` must require Access login. Sign in with your allowed email
    and verify the app loads.
@@ -95,14 +109,18 @@ events to sign in.
 
 1. Enable **Email Routing** for the receiving domain and install the DNS records
    Cloudflare requests. Check existing mail hosting before changing MX records.
+   Do not point a routing rule at the Worker yet.
 2. Enable **Email Sending** in Email Service and onboard the sender domain,
    completing the DNS verification shown by Cloudflare. The `EMAIL` Worker
    binding alone does not verify a domain or grant sending access.
-3. In Mailroom **Settings**, add an Inbox such as `support@example.com`.
-   Start with agent mode `off` or `draft` while checking delivery.
-4. In Email Routing, point that address (or a catch-all rule) at your deployed
-   Worker using **Send to Worker**. Unknown recipient addresses are rejected:
-   a catch-all does not automatically create Inboxes.
+3. In Mailroom **Settings**, add an Inbox such as `support@example.com`. For a
+   new domain, the dialog asks you to confirm Email Routing is enabled and Email
+   Sending is active before it saves the Inbox. Leave **Draft replies to new
+   messages** off until delivery looks right. Turning it on writes a draft for
+   your approval; nothing is sent automatically.
+4. Then point that address (or a catch-all rule) at your deployed Worker using
+   **Send to Worker**. Unknown recipient addresses are rejected, so a rule that
+   exists before the Inbox bounces mail. A catch-all does not create Inboxes.
 5. Send a message from an external mailbox, confirm it appears in the app, then
    reply and verify delivery back to that mailbox.
 
@@ -123,7 +141,10 @@ R2 resources. Do not create an empty second database or bucket for MCP.
    returned ID into `OAUTH_KV`. OAuth clients, grants, authorization codes, and
    tokens live there. Pick a hostname on a domain in your Cloudflare account
    (e.g. `mcp.example.com`) and set it in both `routes` and `MCP_HOSTNAME`.
-   Fill in `WEB_APP_URL`, `TEAM_DOMAIN`, and `MCP_ALLOWED_EMAILS`.
+   Set `WEB_APP_URL` to the Access-protected web origin from step 2 (for example
+   `https://inbox.example.com`), plus `TEAM_DOMAIN` and `MCP_ALLOWED_EMAILS`.
+   MCP conversation links use `WEB_APP_URL`. A `workers.dev` hostname stops
+   working once that route is disabled.
 4. In Cloudflare Zero Trust, create a Self-hosted Access application for the
    exact destination `<MCP_HOSTNAME>/authorize` — this works before the Worker
    exists. Restrict its Allow policy to the instance owner's email and leave

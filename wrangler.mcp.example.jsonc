@@ -1,4 +1,4 @@
-// Copy to wrangler.mcp.jsonc and fill in your own values. See README "Configure OAuth".
+// Copy to wrangler.mcp.jsonc and fill in your own values. See docs/deployment.md.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mailroom-mcp",
@@ -49,8 +49,8 @@
     "MCP_SEND_ENABLED": "true",
     "MCP_DAILY_SEND_LIMIT": "100",
     "MCP_HOSTNAME": "mcp.example.com",
-    // Public URL of the deployed Web Worker
-    "WEB_APP_URL": "https://mailroom.your-subdomain.workers.dev"
+    // Access-protected web origin from the deployment guide. Not a workers.dev URL.
+    "WEB_APP_URL": "https://inbox.example.com"
   },
   "observability": {
     "enabled": true

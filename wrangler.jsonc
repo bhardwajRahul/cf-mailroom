@@ -4,7 +4,10 @@
   "name": "mailroom",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",
-  // Preview deployments would expose the app publicly; keep them off.
+  // No public workers.dev or preview URL. Attach the web hostname in `routes`
+  // (docs/deployment.md). Omitting workers_dev turns workers.dev back on
+  // whenever routes is empty.
+  "workers_dev": false,
   "preview_urls": false,
   "assets": {
     "not_found_handling": "single-page-application",
