@@ -7,6 +7,8 @@ email can be triaged and answered autonomously — the agent looks things up
 
 Runs entirely on Cloudflare: Workers, Email Routing, D1, R2, and Web Push.
 
+![Agentic Inbox: three inboxes in one workspace, with an agent draft awaiting approval](docs/screenshot.png)
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wong2/agentic-inbox)
 
 Deploy the web app into your own Cloudflare account, with storage and drafting
