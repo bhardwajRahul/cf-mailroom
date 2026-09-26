@@ -557,7 +557,7 @@ function AgentStatusBadge({ status }: { status: AgentDraftStatus }) {
 
   const tone =
     status === "draft_ready"
-      ? "border-transparent bg-primary text-primary-foreground"
+      ? "border-transparent bg-primary/10 text-foreground"
       : status === "failed"
         ? "border-destructive/25 bg-destructive/5 text-destructive"
         : status === "processing"
