@@ -398,10 +398,10 @@ export function AgentSettings(props: {
                 <Textarea
                   value={baseInstructions}
                   onChange={(event) => setBaseInstructions(event.target.value)}
-                  rows={10}
+                  rows={4}
                   aria-labelledby="base-instructions-heading"
                   placeholder="Describe the product, the agent's role, voice, general rules, and signature…"
-                  className="min-h-56 resize-y rounded-none border-0 bg-transparent px-4 py-3.5 text-sm leading-6 shadow-none focus-visible:ring-0 sm:px-5 md:text-sm"
+                  className="max-h-[60dvh] min-h-32 resize-y rounded-none border-0 bg-transparent px-4 py-3.5 text-sm leading-6 shadow-none focus-visible:ring-0 sm:px-5 md:text-sm"
                 />
                 <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-4 py-2.5 sm:px-5">
                   <p className="min-w-0 text-xs text-muted-foreground" aria-live="polite">
