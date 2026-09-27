@@ -19,83 +19,45 @@ export function AccessSetup(props: { error: ApiError; onRetry: () => void; retry
       <div className="w-full max-w-[620px]">
         <h1 className="text-[20px] font-semibold tracking-tight">Finish securing Mailroom</h1>
         <p className="mt-2 max-w-xl text-[13.5px] leading-6 text-muted-foreground">
-          Mail stays locked until Cloudflare Access protects this Worker. No one can read or send
-          email from this app in the meantime.
+          Mail stays locked until Cloudflare Access protects this Worker.
         </p>
 
         <ol className="mt-8 space-y-3">
-          <Step n={1} title="Put this Worker behind Access" state={accessActive ? "done" : "current"}>
+          <Step n={1} title="Enable Access" state={accessActive ? "done" : "current"}>
             <p>
-              {workerName ? (
-                <>
-                  Open the <DashLink href={workerDashboardUrl("access")}>Access tab</DashLink> of the{" "}
-                  <strong>{workerName}</strong> Worker
-                </>
-              ) : (
-                <>
-                  Open <DashLink href={workerDashboardUrl("access")}>Workers &amp; Pages</DashLink> →
-                  your Mailroom Worker → <strong>Access</strong>
-                </>
-              )}
-              , and under <strong>Worker policies</strong> select <strong>Enable access</strong>.
-              Choose <strong>All traffic</strong> and the <strong>Cloudflare account</strong> policy
-              so only members of your account can sign in.
-            </p>
-            <p className="mt-2">
-              Zero Trust must be enabled on the account (the free plan is enough). Reload this page
-              afterwards; you will be asked to sign in.
+              In the{" "}
+              <DashLink href={workerDashboardUrl("access")}>
+                {workerName ? `${workerName} Worker's Access tab` : "Worker's Access tab"}
+              </DashLink>
+              , select <strong>Enable access</strong> with the <strong>Cloudflare account</strong>{" "}
+              policy. Then reload this page.
             </p>
           </Step>
 
-          <Step
-            n={2}
-            title="Tell Mailroom which Access application to trust"
-            state={accessActive ? "current" : "todo"}
-          >
-            {mismatch && (
-              <p className="mb-2 text-foreground">
-                The configured values do not match the Access application that signed you in.
-                {hint ? " Replace them with the values below." : ""}
-              </p>
-            )}
+          <Step n={2} title="Add two variables" state={accessActive ? "current" : "todo"}>
             <p>
-              In the Worker's{" "}
-              <DashLink href={workerDashboardUrl("settings")}>Settings</DashLink> →{" "}
-              <strong>Variables and Secrets</strong>, add these as{" "}
-              <strong>Text</strong> variables and deploy:
+              {mismatch ? "These values don't match your Access app. Update them" : "Add these"} in{" "}
+              <DashLink href={workerDashboardUrl("settings")}>Settings</DashLink> → Variables and
+              Secrets:
             </p>
             <div className="mt-3 space-y-2">
               <CopyField
                 label="WEB_ACCESS_TEAM_DOMAIN"
-                value={hint?.team_domain ?? "https://<your-team>.cloudflareaccess.com"}
+                value={hint?.team_domain ?? "Shown after step 1"}
                 placeholder={!hint}
               />
               <CopyField
                 label="WEB_ACCESS_AUD"
-                value={hint?.aud ?? "Application Audience (AUD) tag"}
+                value={hint?.aud ?? "Shown after step 1"}
                 placeholder={!hint}
               />
             </div>
-            {hint ? (
-              <p className="mt-2">
-                These values come from your current sign-in. They are not secrets.
-              </p>
-            ) : (
-              <p className="mt-2">
-                Finish step 1 and reload to see the exact values here.
-              </p>
-            )}
           </Step>
         </ol>
 
-        <div className="mt-6 flex items-center gap-3">
-          <Button onClick={props.onRetry} disabled={props.retrying}>
-            {props.retrying ? "Checking…" : "Check again"}
-          </Button>
-          <span className="text-[12.5px] text-muted-foreground">
-            Saving variables redeploys the Worker; it can take a few seconds.
-          </span>
-        </div>
+        <Button className="mt-6" onClick={props.onRetry} disabled={props.retrying}>
+          {props.retrying ? "Checking…" : "Check again"}
+        </Button>
       </div>
     </div>
   );
