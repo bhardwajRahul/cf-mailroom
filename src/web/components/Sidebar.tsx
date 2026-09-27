@@ -67,7 +67,7 @@ export function Sidebar(props: {
         )}
       </nav>
 
-      <div className="shrink-0 space-y-2 border-t p-3">
+      <div className="shrink-0 p-3">
         <Button
           type="button"
           variant="outline"
@@ -77,6 +77,9 @@ export function Sidebar(props: {
           <SquarePen className="h-4 w-4" aria-hidden="true" />
           Compose
         </Button>
+      </div>
+
+      <div className="shrink-0 border-t px-3 py-2">
         <SidebarItem
           label="Settings"
           icon={<SettingsIcon className="h-4 w-4" />}
