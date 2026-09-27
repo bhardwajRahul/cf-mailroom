@@ -143,16 +143,18 @@ endpoints, which Access blocks because it protects the whole Worker.
    the server URL and checks whether the OAuth endpoints are publicly
    reachable.
 2. If it says Access blocks them, go to **Zero Trust → Access → Applications**
-   and add a **Self-hosted** application with these destinations (use your
-   own hostname), with a single **Bypass** policy for **Everyone**:
+   and add a **Self-hosted** application with these public hostname
+   destinations (use your own hostname, not a Worker destination), with a
+   single **Bypass** policy for **Everyone**:
 
-   - `<worker>.<account>.workers.dev/mcp`
-   - `<worker>.<account>.workers.dev/oauth`
-   - `<worker>.<account>.workers.dev/.well-known`
+   - `<worker>.<account>.workers.dev/mcp` (also covers the token and
+     registration endpoints under `/mcp/oauth/`)
+   - `<worker>.<account>.workers.dev/.well-known` (OAuth discovery; its
+     location is fixed by the OAuth specifications)
 
    A path application takes precedence over Worker-level Access. Everything
    else, including the `/authorize` consent page, stays protected. Leave
-   **Managed OAuth off**. Add the same three paths for each custom domain you use.
+   **Managed OAuth off**. Add the same two paths for each custom domain you use.
 3. Select **Check again** in the card, then add the server URL
    (`https://<worker>.<account>.workers.dev/mcp`) to your MCP client and
    approve it.
@@ -274,5 +276,5 @@ deploy automatically. Continue with Access and domain setup above.
   redeploys the Worker; wait a few seconds and select **Check again**. If it
   says the values do not match, copy the values it shows now.
 - **MCP OAuth redirects to Access before discovery:** add the Bypass
-  application for `/mcp`, `/oauth`, and `/.well-known` on that hostname. The
+  application for `/mcp` and `/.well-known` on that hostname. The
   card in **Settings → General** confirms when it works.

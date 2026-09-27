@@ -189,7 +189,7 @@ that variable to `false` to remove write tools from every client immediately.
 ### Enable the MCP server
 
 MCP is deployed with the app. Access protects the whole Worker, so MCP clients
-need a Bypass application for `/mcp`, `/oauth`, and `/.well-known`; the consent
+need a Bypass application for `/mcp` and `/.well-known`; the consent
 page at `/authorize` stays behind the same Access application as the web UI.
 See [connect an AI agent over MCP](docs/deployment.md#optional-connect-an-ai-agent-over-mcp).
 

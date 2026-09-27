@@ -13,7 +13,6 @@
       "/api/*",
       "/mcp",
       "/mcp/*",
-      "/oauth/*",
       "/.well-known/*",
       "/authorize",
       "/cdn-cgi/handler/email"

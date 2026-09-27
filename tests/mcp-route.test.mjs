@@ -11,10 +11,10 @@ test("the only MCP endpoint is the slashless /mcp path", () => {
 });
 
 test("trailing-slash and prefix lookalikes are rejected", () => {
-  for (const path of ["/mcp/", "/mcpx", "/mcp-foo", "/mcp/tools"]) {
-    assert.equal(isRejectedMcpRouteLookalike(path), true);
+  for (const path of ["/mcp/", "/mcpx", "/mcp-foo", "/mcp/tools", "/mcp/oauth", "/mcp/oauth/", "/mcp/oauth/token/", "/mcp/oauth/revoke"]) {
+    assert.equal(isRejectedMcpRouteLookalike(path), true, path);
   }
-  for (const path of ["/oauth/mcp", "/api/mcp", "/inbox", "/.well-known/oauth-protected-resource/mcp"]) {
+  for (const path of ["/mcp/oauth/token", "/mcp/oauth/register", "/api/mcp", "/inbox", "/.well-known/oauth-protected-resource/mcp"]) {
     assert.equal(isRejectedMcpRouteLookalike(path), false);
   }
 });

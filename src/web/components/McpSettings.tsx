@@ -62,12 +62,12 @@ export function McpSettings() {
               <p className="mt-1">
                 Access currently blocks the OAuth endpoints MCP clients need. In{" "}
                 <strong>Zero Trust → Access → Applications</strong>, add a{" "}
-                <strong>Self-hosted</strong> application with these three destinations and a
-                single <strong>Bypass</strong> policy for <strong>Everyone</strong>:
+                <strong>Self-hosted</strong> application with these two public hostname
+                destinations and a single <strong>Bypass</strong> policy for{" "}
+                <strong>Everyone</strong>:
               </p>
               <div className="mt-3 space-y-2">
                 <CopyField value={`${host}/mcp`} />
-                <CopyField value={`${host}/oauth`} />
                 <CopyField value={`${host}/.well-known`} />
               </div>
               <p className="mt-2">
