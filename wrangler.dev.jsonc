@@ -4,7 +4,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mailroom",
-  "main": "src/worker/index.ts",
+  "main": "src/worker/dev.ts",
   "compatibility_date": "2026-08-01",
   "assets": {
     "not_found_handling": "single-page-application",

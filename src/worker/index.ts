@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { api } from "./api";
+import { requireWebAccess } from "./api/access.ts";
 import { processDraftRun } from "./agent/draft";
 import { receiveEmail } from "./email/receive";
 
 const app = new Hono<{ Bindings: Env }>();
+app.use("/api/*", requireWebAccess);
 app.route("/api", api);
 
 export default {

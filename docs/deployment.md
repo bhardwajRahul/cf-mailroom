@@ -19,7 +19,8 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
 ## At a glance
 
 1. Deploy with the button — storage, queues, and migrations are automatic.
-2. Put the app behind Cloudflare Access. Until you do, it is publicly readable.
+2. Put the app behind Cloudflare Access and configure JWT validation. The API
+   rejects requests until authentication is configured.
 3. Connect your email domain (Email Routing in, Email Sending out).
 4. Add an Inbox in Settings and send yourself a test email.
 5. Optionally connect an agent over MCP and enable browser notifications.
@@ -71,17 +72,28 @@ uses that ID when present.
 
 ## 2. Protect the web app before adding email
 
-The web API has no built-in login. `wrangler.jsonc` sets `workers_dev` to true
+The web app uses Cloudflare Access for login and verifies its JWT on every API
+request. `wrangler.jsonc` sets `workers_dev` to true
 and `preview_urls` to false, so the deploy publishes
 `https://<worker>.<account>.workers.dev` and does not publish preview URLs.
-Until Access covers that hostname, **anyone who opens it can read all mail**.
+Static UI assets can load before Access is configured, but the API denies
+access until it receives a valid assertion for the configured application.
 Do this step before registering an Inbox or routing mail.
 
 1. In **Zero Trust → Access → Applications**, add a **Self-hosted** application
    for the whole `workers.dev` hostname (all paths, including `/api/*`). Add an
    Allow policy restricted to your email address; do not use an Everyone or
    Bypass policy.
-2. Leave these flags as they are in the template:
+2. In the Worker's **Settings → Variables and Secrets**, add these Text variables:
+
+   - `WEB_ACCESS_TEAM_DOMAIN`: your team URL, such as `https://your-team.cloudflareaccess.com`.
+   - `WEB_ACCESS_AUD`: the Application Audience (AUD) Tag of the Access application
+     protecting the **web app**, not the separate MCP `/authorize` application.
+
+   These values are not secrets. `keep_vars: true` preserves dashboard variables
+   during Git-triggered deployments. Alternatively, define them in your instance's
+   `wrangler.jsonc` `vars` object. Missing or invalid configuration fails closed.
+3. Leave these flags as they are in the template:
 
    ```jsonc
    "workers_dev": true,
@@ -90,17 +102,23 @@ Do this step before registering an Inbox or routing mail.
 
    `preview_urls` stays off because each preview URL is another public hostname,
    and Access on the main `workers.dev` hostname does not cover it.
-3. A custom domain is optional. If you add one, list it in `routes` and add a
-   second Access application for that hostname. Access on one hostname does not
-   cover the other. A custom domain added only in the dashboard does not survive
-   the next deploy unless it is in `routes`.
-4. Open the web app in a private browser window: both the app and
+4. A custom domain is optional. If you add one, list it in `routes` and add it
+   to the **same Access application** so both hostnames use the configured AUD.
+   Access on one hostname does not automatically cover the other. A custom domain
+   added only in the dashboard does not survive the next deploy unless it is in
+   `routes`.
+5. Open the web app in a private browser window: both the app and
    `/api/mailboxes` must require Access login. Sign in with your allowed email
    and verify the app loads.
 
 See [Cloudflare Access for Workers](https://developers.cloudflare.com/workers/configuration/access/).
 Access protects HTTP requests; it does not require inbound email or queue
 events to sign in.
+
+`npm run dev` selects `src/worker/dev.ts`, which skips JWT verification against
+local test data; same-origin write checks still apply. Production selects
+`src/worker/index.ts` and has no environment-variable or request-header bypass.
+Do not deploy `wrangler.dev.jsonc` or expose the local dev server publicly.
 
 ## 3. Connect your email domain
 

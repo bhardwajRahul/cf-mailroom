@@ -123,9 +123,12 @@ not `npx wrangler dev`: the test always targets port 5173 and `wrangler.dev.json
 Search and conversation filters are URL parameters (`?q=...&filter=unread|drafts`),
 so refresh, browser history, and shared links preserve the current view.
 
-> **Security note**: the web UI has no authentication. For a real deployment,
-> put the Worker behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
-> before exposing it.
+> **Security note**: protect the web hostname with [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
+> and configure `WEB_ACCESS_TEAM_DOMAIN` and `WEB_ACCESS_AUD` as described in
+> [deployment setup](docs/deployment.md#2-protect-the-web-app-before-adding-email).
+> The production API independently verifies Access JWTs and rejects requests
+> when authentication is missing or misconfigured. Writes also require an exact
+> same-origin `Origin` header. Local development uses a separate entrypoint.
 
 Browser notifications are off by default. After configuring the VAPID secrets,
 turn them on under **Settings → General**. Every browser that should receive
