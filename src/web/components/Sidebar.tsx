@@ -2,7 +2,6 @@ import type { Mailbox } from "../../shared/types";
 import { cn } from "@/lib/utils";
 import { InboxIcon, MailIcon, SettingsIcon } from "./Icons";
 import { SquarePen } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 export function Sidebar(props: {
   mailboxes: Mailbox[];
@@ -57,8 +56,14 @@ export function Sidebar(props: {
         )}
       </nav>
 
-      <div className="shrink-0 px-3 pb-3 pt-1">
-        <Button onClick={props.onCompose} className="w-full justify-start"><SquarePen className="h-4 w-4" />Compose</Button>
+      <div className="shrink-0 px-2 pb-3 pt-1">
+        <SidebarItem
+          label="Compose"
+          icon={<SquarePen className="h-4 w-4" />}
+          unread={0}
+          active={false}
+          onClick={props.onCompose}
+        />
       </div>
       <div className="border-t px-2 py-2">
         <SidebarItem
