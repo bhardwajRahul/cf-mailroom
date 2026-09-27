@@ -9,6 +9,19 @@ Runs entirely on Cloudflare: Workers, Email Routing, D1, R2, and Web Push.
 
 ![Mailroom: three inboxes in one workspace, with an agent draft awaiting approval](docs/screenshot.png)
 
+## Features
+
+- **Unified inbox** — manage multiple email addresses and domains in one workspace.
+- **Compose and reply** — send new emails or reply to conversations, with attachments.
+- **AI reply drafts** — enable per-inbox drafting with custom instructions and playbooks; review and approve before sending.
+- **Automatic labels** — organize incoming mail with natural-language labeling rules.
+- **Search and triage** — search message content, filter conversations, and mark read or archive in bulk.
+- **MCP integration** — let external AI agents read conversations, compose emails, and send replies through scoped OAuth access.
+- **Browser notifications** — opt in to Web Push alerts for new messages.
+- **Self-hosted on Cloudflare** — run in your own account, with Cloudflare Access protecting the web app.
+
+## Deploy
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wong2/cf-mailroom)
 
 Deploy the web app into your own Cloudflare account, with storage and drafting
