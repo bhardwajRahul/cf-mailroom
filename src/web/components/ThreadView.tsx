@@ -369,7 +369,7 @@ export function ThreadView(props: {
               placeholder="Write a reply…"
               rows={3}
               aria-label="Reply"
-              className="max-h-[40dvh] min-h-[84px] resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-6 shadow-none focus-visible:ring-0 md:text-sm"
+              className="max-h-[min(30dvh,200px)] min-h-[84px] resize-none overflow-y-auto overscroll-contain rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-6 shadow-none focus-visible:ring-0 md:text-sm"
             />
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-1.5 px-3.5 pb-1" aria-label="Attachments to send">
