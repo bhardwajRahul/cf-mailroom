@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireSameOrigin } from "./csrf.ts";
 import { enqueueDraftRun } from "../agent/runs";
 import {
   AttachmentInputError,
@@ -26,6 +27,7 @@ import type {
 } from "../../shared/types";
 
 export const api = new Hono<{ Bindings: Env }>();
+api.use("*", requireSameOrigin);
 
 api.get("/settings/general", async (c) => {
   const [settings, subscriptions] = await Promise.all([
