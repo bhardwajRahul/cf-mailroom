@@ -148,16 +148,24 @@ export const updateLabel = (id: number, input: Partial<LabelInput>) =>
 export const deleteLabel = (id: number) =>
   request<{ ok: true }>(`/labels/${id}`, { method: "DELETE" });
 
-function threadListParams(mailboxId: number | null, labelId: number | null) {
+function threadListParams(
+  mailboxId: number | null,
+  labelId: number | null,
+  status: ThreadSummary["status"],
+) {
   const params = new URLSearchParams();
   if (mailboxId !== null) params.set("mailbox_id", String(mailboxId));
   if (labelId !== null) params.set("label_id", String(labelId));
+  if (status !== "open") params.set("status", status);
   const query = params.toString();
   return query ? `?${query}` : "";
 }
 
-export const fetchThreads = (mailboxId: number | null, labelId: number | null = null) =>
-  request<ThreadSummary[]>(`/threads${threadListParams(mailboxId, labelId)}`);
+export const fetchThreads = (
+  mailboxId: number | null,
+  labelId: number | null = null,
+  status: ThreadSummary["status"] = "open",
+) => request<ThreadSummary[]>(`/threads${threadListParams(mailboxId, labelId, status)}`);
 
 export const fetchThread = (id: number) => request<ThreadDetail>(`/threads/${id}`);
 
@@ -168,7 +176,9 @@ export const searchThreads = (q: string, mailboxId: number | null, labelId: numb
   return request<ThreadSummary[]>(`/search?${params}`);
 };
 
-export const bulkUpdateThreads = (ids: number[], action: "read" | "archive") =>
+export type BulkThreadAction = "read" | "archive" | "unarchive";
+
+export const bulkUpdateThreads = (ids: number[], action: BulkThreadAction) =>
   request<{ ok: true; updated: number }>("/threads/bulk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -178,6 +188,9 @@ export const bulkUpdateThreads = (ids: number[], action: "read" | "archive") =>
 export const markRead = (id: number) => request(`/threads/${id}/read`, { method: "POST" });
 
 export const archiveThread = (id: number) => request(`/threads/${id}/archive`, { method: "POST" });
+
+export const unarchiveThread = (id: number) =>
+  request(`/threads/${id}/unarchive`, { method: "POST" });
 
 export const sendReply = (
   id: number,

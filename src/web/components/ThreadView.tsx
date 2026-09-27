@@ -9,6 +9,7 @@ import {
   markRead,
   retryDraftRun,
   sendReply,
+  unarchiveThread,
 } from "../api";
 import type { Draft, DraftRun, Message } from "../../shared/types";
 import {
@@ -37,7 +38,7 @@ import { LinkifiedText } from "./LinkifiedText";
 export function ThreadView(props: {
   threadId: number;
   onBack: () => void;
-  onArchived: () => void;
+  onMoved: () => void;
 }) {
   const queryClient = useQueryClient();
   const [replyText, setReplyText] = useState("");
@@ -113,11 +114,12 @@ export function ThreadView(props: {
     onSuccess: invalidateAll,
   });
 
-  const archive = useMutation({
-    mutationFn: () => archiveThread(props.threadId),
+  const moveThread = useMutation({
+    mutationFn: (action: "archive" | "unarchive") =>
+      action === "archive" ? archiveThread(props.threadId) : unarchiveThread(props.threadId),
     onSuccess: () => {
       invalidateAll();
-      props.onArchived();
+      props.onMoved();
     },
   });
 
@@ -229,16 +231,33 @@ export function ThreadView(props: {
             </span>
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => archive.mutate()}
-          disabled={archive.isPending}
-          aria-label="Archive conversation"
-          className="shrink-0"
-        >
-          <ArchiveIcon className="h-4 w-4" />
-          <span className="hidden sm:inline">{archive.isPending ? "Archiving…" : "Archive"}</span>
-        </Button>
+        {thread.status === "archived" ? (
+          <Button
+            variant="outline"
+            onClick={() => moveThread.mutate("unarchive")}
+            disabled={moveThread.isPending}
+            aria-label="Move conversation to inbox"
+            className="shrink-0"
+          >
+            <InboxIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {moveThread.isPending ? "Moving…" : "Move to inbox"}
+            </span>
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => moveThread.mutate("archive")}
+            disabled={moveThread.isPending}
+            aria-label="Archive conversation"
+            className="shrink-0"
+          >
+            <ArchiveIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {moveThread.isPending ? "Archiving…" : "Archive"}
+            </span>
+          </Button>
+        )}
       </header>
 
       <div ref={conversationRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

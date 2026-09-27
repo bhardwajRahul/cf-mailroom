@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { bulkUpdateThreads } from "../api";
+import { bulkUpdateThreads, type BulkThreadAction } from "../api";
 import { formatTime } from "../lib";
 import { EmailAvatar } from "./EmailAvatar";
 import {
@@ -31,7 +31,7 @@ import {
   XIcon,
 } from "./Icons";
 
-export type ThreadFilter = "all" | "unread" | "drafts";
+export type ThreadFilter = "all" | "unread" | "drafts" | "archived";
 
 export function ThreadList(props: {
   mailboxes: Mailbox[];
@@ -85,6 +85,9 @@ export function ThreadList(props: {
     if (props.filter === "drafts") {
       return props.threads.filter((thread) => thread.pending_draft_count > 0);
     }
+    if (props.filter === "archived") {
+      return props.threads.filter((thread) => thread.status === "archived");
+    }
     return props.threads;
   }, [props.filter, props.threads]);
 
@@ -115,7 +118,7 @@ export function ThreadList(props: {
   );
 
   const bulkUpdate = useMutation({
-    mutationFn: ({ ids, action }: { ids: number[]; action: "read" | "archive" }) =>
+    mutationFn: ({ ids, action }: { ids: number[]; action: BulkThreadAction }) =>
       bulkUpdateThreads(ids, action),
     onSuccess: () => {
       setChecked(new Set());
@@ -136,8 +139,12 @@ export function ThreadList(props: {
   const checkedCount = checked.size;
   const allChecked = visibleThreads.length > 0 && checkedCount === visibleThreads.length;
 
-  const unreadCount = props.threads.filter((thread) => !thread.is_read).length;
-  const draftCount = props.threads.filter((thread) => thread.pending_draft_count > 0).length;
+  const openThreads = props.threads.filter((thread) => thread.status !== "archived");
+  const unreadCount = openThreads.filter((thread) => !thread.is_read).length;
+  const draftCount = openThreads.filter((thread) => thread.pending_draft_count > 0).length;
+  const checkedAllArchived =
+    checkedCount > 0 &&
+    visibleThreads.every((thread) => !checked.has(thread.id) || thread.status === "archived");
 
   const selectionMode = checkedCount > 0;
   const showFetching = props.fetching && !props.loading;
@@ -256,7 +263,7 @@ export function ThreadList(props: {
               )}
             </div>
 
-            <div className="mt-2.5 flex h-8 items-center gap-3">
+            <div className="mt-2.5 flex h-8 items-center gap-2 sm:gap-3">
               {visibleThreads.length > 0 && (
                 <span className="flex w-8 shrink-0 justify-center">
                   <Checkbox
@@ -286,10 +293,24 @@ export function ThreadList(props: {
                       variant="ghost"
                       size="sm"
                       disabled={bulkUpdate.isPending}
-                      onClick={() => bulkUpdate.mutate({ ids: [...checked], action: "archive" })}
+                      onClick={() =>
+                        bulkUpdate.mutate({
+                          ids: [...checked],
+                          action: checkedAllArchived ? "unarchive" : "archive",
+                        })
+                      }
                     >
-                      <ArchiveIcon className="h-3.5 w-3.5" />
-                      Archive
+                      {checkedAllArchived ? (
+                        <>
+                          <InboxIcon className="h-3.5 w-3.5" />
+                          Move to inbox
+                        </>
+                      ) : (
+                        <>
+                          <ArchiveIcon className="h-3.5 w-3.5" />
+                          Archive
+                        </>
+                      )}
                     </Button>
                     <Button
                       variant="ghost"
@@ -313,6 +334,7 @@ export function ThreadList(props: {
                       <FilterTab value="all" label="All" />
                       <FilterTab value="unread" label="Unread" count={unreadCount} />
                       <FilterTab value="drafts" label="Drafts" count={draftCount} />
+                      <FilterTab value="archived" label="Archived" />
                     </TabsList>
                   </Tabs>
 
@@ -333,7 +355,7 @@ export function ThreadList(props: {
                         }`}
                       >
                         <TagIcon className="h-3.5 w-3.5" />
-                        <span className={`min-w-0 truncate ${props.activeLabel === null ? "max-sm:sr-only" : ""}`}>
+                        <span className={`min-w-0 truncate ${props.activeLabel === null ? "sr-only" : ""}`}>
                           <SelectValue placeholder="All labels" />
                         </span>
                       </SelectTrigger>
@@ -389,7 +411,9 @@ export function ThreadList(props: {
                   ? "Try a name, subject, or message text."
                   : props.filter === "all"
                     ? "Nothing needs your attention right now."
-                    : undefined
+                    : props.filter === "archived"
+                      ? "Conversations you archive will appear here."
+                      : undefined
             }
           />
         )}
@@ -402,6 +426,7 @@ export function ThreadList(props: {
             checked={checked.has(thread.id)}
             selectionMode={selectionMode}
             showMailbox={props.showMailboxChip}
+            showArchived={props.filter !== "archived"}
             onCheckedChange={(value) => toggleChecked(thread.id, value)}
             onClick={() => props.onSelect(thread.id)}
           />
@@ -413,7 +438,7 @@ export function ThreadList(props: {
 
 function FilterTab(props: { value: ThreadFilter; label: string; count?: number }) {
   return (
-    <TabsTrigger value={props.value} className="px-2.5 text-[13px]">
+    <TabsTrigger value={props.value} className="px-2 text-[13px] sm:px-2.5">
       {props.label}
       {props.count ? (
         <span className="text-xs tabular-nums text-muted-foreground">{props.count}</span>
@@ -428,10 +453,12 @@ function ThreadRow(props: {
   checked: boolean;
   selectionMode: boolean;
   showMailbox: boolean;
+  showArchived: boolean;
   onCheckedChange: (value: boolean) => void;
   onClick: () => void;
 }) {
   const { thread } = props;
+  const showArchivedBadge = props.showArchived && thread.status === "archived";
   const unread = !thread.is_read;
   const sender = thread.last_from ?? thread.mailbox_address;
   const checkboxId = `thread-select-${thread.id}`;
@@ -506,8 +533,17 @@ function ThreadRow(props: {
             {thread.snippet}
           </span>
 
-          {(props.showMailbox || showAgentStatus || thread.labels.length > 0) && (
+          {(props.showMailbox || showAgentStatus || showArchivedBadge || thread.labels.length > 0) && (
             <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+              {showArchivedBadge && (
+                <Badge
+                  variant="outline"
+                  className="h-5 shrink-0 gap-1 rounded-md px-1.5 text-[11px] font-normal text-muted-foreground"
+                >
+                  <ArchiveIcon className="h-3 w-3" />
+                  Archived
+                </Badge>
+              )}
               {showAgentStatus && <AgentStatusBadge status={agentStatus} />}
               {thread.labels.map((label) => (
                 <Badge

@@ -75,15 +75,16 @@ function Workspace(props: {
   const filter = parseFilter(searchParams.get("filter"));
   const activeLabel = parseId(searchParams.get("label") ?? undefined);
   const deferredSearch = useDeferredValue(search.trim());
+  const threadStatus = filter === "archived" ? "archived" : "open";
 
   const mailboxes = useQuery({ queryKey: ["mailboxes"], queryFn: fetchMailboxes });
   const labels = useQuery({ queryKey: ["labels"], queryFn: () => fetchLabels() });
   const threads = useQuery({
-    queryKey: ["threads", selectedMailbox, deferredSearch, activeLabel],
+    queryKey: ["threads", selectedMailbox, deferredSearch, activeLabel, deferredSearch ? null : threadStatus],
     queryFn: () =>
       deferredSearch
         ? searchThreads(deferredSearch, selectedMailbox, activeLabel)
-        : fetchThreads(selectedMailbox, activeLabel),
+        : fetchThreads(selectedMailbox, activeLabel, threadStatus),
     placeholderData: keepPreviousData,
     enabled: props.view === "inbox",
     refetchInterval: (query) =>
@@ -255,7 +256,7 @@ function Workspace(props: {
               <ThreadView
                 threadId={selectedThread}
                 onBack={() => navigate({ pathname: listPath, search: location.search })}
-                onArchived={() => navigate({ pathname: listPath, search: location.search })}
+                onMoved={() => navigate({ pathname: listPath, search: location.search })}
               />
             ) : (
               <EmptyReadingPane empty={inboxIsEmpty} />
@@ -300,7 +301,7 @@ function parseId(value: string | undefined): number | null {
 }
 
 function parseFilter(value: string | null): ThreadFilter {
-  return value === "unread" || value === "drafts" ? value : "all";
+  return value === "unread" || value === "drafts" || value === "archived" ? value : "all";
 }
 
 function threadPath(mailboxId: number | null, threadId: number): string {

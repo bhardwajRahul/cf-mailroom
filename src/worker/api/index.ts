@@ -448,6 +448,9 @@ api.get("/threads", async (c) => {
   const mailboxId = c.req.query("mailbox_id");
   const labelId = c.req.query("label_id");
   const status = c.req.query("status") ?? "open";
+  if (!["open", "archived", "needs_human"].includes(status)) {
+    return c.json({ error: "status must be open, archived or needs_human" }, 400);
+  }
   const conditions = ["t.status = ?2", "(?3 = 0 OR EXISTS (SELECT 1 FROM thread_labels tl WHERE tl.thread_id = t.id AND tl.label_id = ?3))"];
   if (mailboxId) conditions.push("t.mailbox_id = ?1");
   const { results } = await c.env.DB.prepare(
@@ -678,15 +681,17 @@ api.post("/threads/bulk", async (c) => {
   if (ids.length === 0 || ids.length > 100) {
     return c.json({ error: "ids must contain 1-100 conversation ids" }, 400);
   }
-  if (body.action !== "read" && body.action !== "archive") {
-    return c.json({ error: "action must be read or archive" }, 400);
-  }
+  const updates: Record<string, string> = {
+    read: "is_read = 1",
+    archive: "status = 'archived'",
+    unarchive: "status = CASE status WHEN 'archived' THEN 'open' ELSE status END",
+  };
+  const update = typeof body.action === "string" ? updates[body.action] : undefined;
+  if (!update) return c.json({ error: "action must be read, archive or unarchive" }, 400);
 
   const placeholders = ids.map(() => "?").join(", ");
   const result = await c.env.DB.prepare(
-    body.action === "read"
-      ? `UPDATE threads SET is_read = 1 WHERE id IN (${placeholders})`
-      : `UPDATE threads SET status = 'archived' WHERE id IN (${placeholders})`,
+    `UPDATE threads SET ${update} WHERE id IN (${placeholders})`,
   )
     .bind(...ids)
     .run();
@@ -700,6 +705,13 @@ api.post("/threads/:id/read", async (c) => {
 
 api.post("/threads/:id/archive", async (c) => {
   await c.env.DB.prepare("UPDATE threads SET status = 'archived' WHERE id = ?")
+    .bind(c.req.param("id"))
+    .run();
+  return c.json({ ok: true });
+});
+
+api.post("/threads/:id/unarchive", async (c) => {
+  await c.env.DB.prepare("UPDATE threads SET status = 'open' WHERE id = ? AND status = 'archived'")
     .bind(c.req.param("id"))
     .run();
   return c.json({ ok: true });
