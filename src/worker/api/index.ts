@@ -451,8 +451,15 @@ api.get("/threads", async (c) => {
   if (!["open", "archived", "needs_human"].includes(status)) {
     return c.json({ error: "status must be open, archived or needs_human" }, 400);
   }
-  const conditions = ["t.status = ?2", "(?3 = 0 OR EXISTS (SELECT 1 FROM thread_labels tl WHERE tl.thread_id = t.id AND tl.label_id = ?3))"];
+  const beforeAt = c.req.query("before_at") ?? "";
+  const beforeId = parsePositiveId(c.req.query("before_id") ?? "") ?? 0;
+  const conditions = [
+    "t.status = ?2",
+    "(?3 = 0 OR EXISTS (SELECT 1 FROM thread_labels tl WHERE tl.thread_id = t.id AND tl.label_id = ?3))",
+    "(?4 = '' OR t.last_message_at < ?4 OR (t.last_message_at = ?4 AND t.id < ?5))",
+  ];
   if (mailboxId) conditions.push("t.mailbox_id = ?1");
+  if (c.req.query("unread") === "1") conditions.push("t.is_read = 0");
   const { results } = await c.env.DB.prepare(
     `SELECT t.*, m.address AS mailbox_address, m.color AS mailbox_color,
        m.agent_mode AS mailbox_agent_mode,
@@ -488,9 +495,9 @@ api.get("/threads", async (c) => {
        ORDER BY dr.created_at DESC, dr.id DESC LIMIT 1
      )
      WHERE ${conditions.join(" AND ")}
-     ORDER BY t.last_message_at DESC LIMIT 100`,
+     ORDER BY t.last_message_at DESC, t.id DESC LIMIT ${THREAD_PAGE_SIZE}`,
   )
-    .bind(mailboxId ?? 0, status, labelId ?? 0)
+    .bind(mailboxId ?? 0, status, labelId ?? 0, beforeAt, beforeId)
     .all();
   const rows = results as unknown as Array<{ id: number; labels: ThreadLabel[] }>;
   await attachLabels(c.env, rows);
@@ -845,9 +852,10 @@ api.get("/search", async (c) => {
          SELECT 1 FROM thread_labels tl
          WHERE tl.thread_id = t.id AND tl.label_id = ?3
        ))
+       AND (?4 = 0 OR t.is_read = 0)
      ORDER BY t.last_message_at DESC LIMIT 50`,
   )
-    .bind(q, mailboxId ?? 0, labelId ?? 0)
+    .bind(q, mailboxId ?? 0, labelId ?? 0, c.req.query("unread") === "1" ? 1 : 0)
     .all();
   const rows = results as unknown as Array<{ id: number; labels: ThreadLabel[] }>;
   await attachLabels(c.env, rows);
@@ -855,6 +863,7 @@ api.get("/search", async (c) => {
 });
 
 const MAX_LABELS_PER_MAILBOX = 20;
+const THREAD_PAGE_SIZE = 50;
 
 async function attachLabels(
   env: Env,

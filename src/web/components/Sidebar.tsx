@@ -1,13 +1,14 @@
 import type { Mailbox } from "../../shared/types";
 import { cn } from "@/lib/utils";
-import { InboxIcon, MailIcon, SettingsIcon } from "./Icons";
+import { ArchiveIcon, InboxIcon, MailIcon, SettingsIcon } from "./Icons";
 import { SquarePen } from "lucide-react";
 
 export function Sidebar(props: {
   mailboxes: Mailbox[];
   selected: number | null;
-  activeView: "inbox" | "settings";
+  activeView: "inbox" | "archive" | "settings";
   onSelect: (id: number | null) => void;
+  onOpenArchive: () => void;
   onOpenSettings: () => void;
   onCompose: () => void;
 }) {
@@ -28,14 +29,33 @@ export function Sidebar(props: {
         </p>
       </div>
 
-      <nav aria-label="Inboxes" className="flex-1 overflow-y-auto px-2 pt-1 pb-4">
+      <div className="shrink-0 px-2 pb-3">
         <SidebarItem
-          label="All inboxes"
-          icon={<InboxIcon className="h-4 w-4" />}
-          unread={totalUnread}
-          active={props.activeView === "inbox" && props.selected === null}
-          onClick={() => props.onSelect(null)}
+          label="Compose"
+          icon={<SquarePen className="h-4 w-4" />}
+          unread={0}
+          active={false}
+          onClick={props.onCompose}
         />
+      </div>
+
+      <nav aria-label="Mail" className="flex-1 overflow-y-auto px-2 pt-1 pb-4">
+        <div className="space-y-px">
+          <SidebarItem
+            label="All inboxes"
+            icon={<InboxIcon className="h-4 w-4" />}
+            unread={totalUnread}
+            active={props.activeView === "inbox" && props.selected === null}
+            onClick={() => props.onSelect(null)}
+          />
+          <SidebarItem
+            label="Archive"
+            icon={<ArchiveIcon className="h-4 w-4" />}
+            unread={0}
+            active={props.activeView === "archive"}
+            onClick={props.onOpenArchive}
+          />
+        </div>
 
         {props.mailboxes.length > 0 && (
           <div className="mt-5">
@@ -56,15 +76,6 @@ export function Sidebar(props: {
         )}
       </nav>
 
-      <div className="shrink-0 px-2 pb-3 pt-1">
-        <SidebarItem
-          label="Compose"
-          icon={<SquarePen className="h-4 w-4" />}
-          unread={0}
-          active={false}
-          onClick={props.onCompose}
-        />
-      </div>
       <div className="border-t px-2 py-2">
         <SidebarItem
           label="Settings"

@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useRef } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   Navigate,
   Route,
@@ -9,16 +9,23 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-import { fetchLabels, fetchMailboxes, fetchThreads, searchThreads } from "./api";
+import {
+  fetchLabels,
+  fetchMailboxes,
+  fetchThreads,
+  searchThreads,
+  THREAD_PAGE_SIZE,
+  type ThreadCursor,
+} from "./api";
 import { AgentSettings } from "./components/AgentSettings";
 import { GeneralSettings } from "./components/GeneralSettings";
 import { ComposeEmailProvider, useCompose } from "./components/ComposeEmail";
 import { InboxIcon } from "./components/Icons";
 import { Sidebar } from "./components/Sidebar";
-import { ThreadList, type ThreadFilter } from "./components/ThreadList";
+import { ThreadList, type ThreadFilter, type ThreadScope } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
 
-type WorkspaceView = "inbox" | "settings";
+type WorkspaceView = "inbox" | "archive" | "settings";
 type SettingsSection = "general" | "inboxes";
 
 export function App() {
@@ -28,6 +35,8 @@ export function App() {
       <Route path="/" element={<Navigate to="/inbox" replace />} />
       <Route path="/inbox" element={<Workspace view="inbox" />} />
       <Route path="/inbox/:threadId" element={<Workspace view="inbox" />} />
+      <Route path="/archive" element={<Workspace view="archive" />} />
+      <Route path="/archive/:threadId" element={<Workspace view="archive" />} />
       <Route path="/mailboxes/:mailboxId" element={<Workspace view="inbox" mailboxScoped />} />
       <Route
         path="/mailboxes/:mailboxId/threads/:threadId"
@@ -75,28 +84,49 @@ function Workspace(props: {
   const filter = parseFilter(searchParams.get("filter"));
   const activeLabel = parseId(searchParams.get("label") ?? undefined);
   const deferredSearch = useDeferredValue(search.trim());
-  const threadStatus = filter === "archived" ? "archived" : "open";
+  const isArchive = props.view === "archive";
+  const isMailView = props.view !== "settings";
+  const autoSelected = (location.state as { autoSelected?: boolean } | null)?.autoSelected === true;
 
   const mailboxes = useQuery({ queryKey: ["mailboxes"], queryFn: fetchMailboxes });
   const labels = useQuery({ queryKey: ["labels"], queryFn: () => fetchLabels() });
-  const threads = useQuery({
-    queryKey: ["threads", selectedMailbox, deferredSearch, activeLabel, deferredSearch ? null : threadStatus],
-    queryFn: () =>
+  const threadQuery = {
+    mailboxId: selectedMailbox,
+    labelId: activeLabel,
+    unread: filter === "unread",
+  };
+  const threads = useInfiniteQuery({
+    queryKey: ["threads", props.view, selectedMailbox, deferredSearch, activeLabel, filter],
+    queryFn: ({ pageParam }) =>
       deferredSearch
-        ? searchThreads(deferredSearch, selectedMailbox, activeLabel)
-        : fetchThreads(selectedMailbox, activeLabel, threadStatus),
+        ? searchThreads(deferredSearch, threadQuery)
+        : fetchThreads({ ...threadQuery, status: isArchive ? "archived" : "open" }, pageParam),
+    initialPageParam: null as ThreadCursor | null,
+    getNextPageParam: (lastPage) => {
+      const last = lastPage.at(-1);
+      return deferredSearch || !last || lastPage.length < THREAD_PAGE_SIZE
+        ? undefined
+        : { at: last.last_message_at, id: last.id };
+    },
     placeholderData: keepPreviousData,
-    enabled: props.view === "inbox",
+    enabled: isMailView,
     refetchInterval: (query) =>
-      query.state.data?.some(
-        (thread) =>
-          thread.draft_run_status === "queued" || thread.draft_run_status === "generating",
+      query.state.data?.pages.some((page) =>
+        page.some(
+          (thread) =>
+            thread.draft_run_status === "queued" || thread.draft_run_status === "generating",
+        ),
       )
         ? 3_000
         : 30_000,
   });
+  const threadRows = threads.data?.pages.flat() ?? [];
 
-  const listPath = selectedMailbox === null ? "/inbox" : `/mailboxes/${selectedMailbox}`;
+  const listPath = isArchive
+    ? "/archive"
+    : selectedMailbox === null
+      ? "/inbox"
+      : `/mailboxes/${selectedMailbox}`;
 
   useEffect(() => {
     if (selectedThread !== null) autoSelectedScope.current = listPath;
@@ -104,27 +134,26 @@ function Workspace(props: {
 
   useEffect(() => {
     if (
-      props.view === "inbox" &&
+      isMailView &&
       selectedThread === null &&
       autoSelectedScope.current !== listPath &&
-      threads.data?.length &&
+      threadRows.length &&
       !threads.isPlaceholderData &&
       window.matchMedia("(min-width: 768px)").matches
     ) {
       autoSelectedScope.current = listPath;
       navigate(
-        { pathname: threadPath(selectedMailbox, threads.data[0].id), search: location.search },
-        { replace: true },
+        { pathname: `${threadListBase(listPath)}/${threadRows[0].id}`, search: location.search },
+        { replace: true, state: { autoSelected: true } },
       );
     }
   }, [
+    isMailView,
     listPath,
     location.search,
     navigate,
-    props.view,
-    selectedMailbox,
     selectedThread,
-    threads.data,
+    threadRows,
     threads.isPlaceholderData,
   ]);
 
@@ -142,6 +171,11 @@ function Workspace(props: {
 
   const selectMailbox = (id: number | null) => {
     navigate(id === null ? "/inbox" : `/mailboxes/${id}`);
+  };
+
+  const selectScope = (scope: ThreadScope) => {
+    if (scope === "archive") navigate("/archive");
+    else selectMailbox(scope === "all" ? null : scope);
   };
 
   const openSettings = () => {
@@ -168,11 +202,15 @@ function Workspace(props: {
     );
   };
 
-  const selectedMailboxName =
-    selectedMailbox === null
+  const selectedMailboxName = isArchive
+    ? "Archive"
+    : selectedMailbox === null
       ? "All inboxes"
       : (mailboxes.data?.find((mailbox) => mailbox.id === selectedMailbox)?.address ??
         "Inbox");
+  const scopeUnread = (mailboxes.data ?? [])
+    .filter((mailbox) => selectedMailbox === null || mailbox.id === selectedMailbox)
+    .reduce((sum, mailbox) => sum + mailbox.unread_count, 0);
   const inboxIsEmpty =
     props.view === "inbox" &&
     selectedThread === null &&
@@ -182,7 +220,7 @@ function Workspace(props: {
     deferredSearch === "" &&
     filter === "all" &&
     activeLabel === null &&
-    threads.data?.length === 0;
+    threadRows.length === 0;
 
   return (
     <div className="flex h-dvh min-h-[560px] overflow-hidden bg-background text-foreground">
@@ -191,6 +229,7 @@ function Workspace(props: {
         selected={selectedMailbox}
         activeView={props.view}
         onSelect={selectMailbox}
+        onOpenArchive={() => navigate("/archive")}
         onOpenSettings={openSettings}
         onCompose={() => openCompose(selectedMailbox)}
       />
@@ -224,29 +263,35 @@ function Workspace(props: {
         <>
           <ThreadList
             mailboxes={mailboxes.data ?? []}
-            threads={threads.data ?? []}
+            threads={threadRows}
             labels={labels.data ?? []}
             title={selectedMailboxName}
             selected={selectedThread}
             selectedMailbox={selectedMailbox}
+            scope={isArchive ? "archive" : (selectedMailbox ?? "all")}
+            archive={isArchive}
+            unreadCount={!isArchive && !deferredSearch && activeLabel === null ? scopeUnread : null}
             showMailboxChip={selectedMailbox === null}
             search={search}
             filter={filter}
             activeLabel={activeLabel}
             loading={threads.isLoading}
-            fetching={threads.isFetching}
+            fetching={threads.isFetching && !threads.isFetchingNextPage}
+            hasMore={threads.hasNextPage}
+            loadingMore={threads.isFetchingNextPage}
+            onLoadMore={() => threads.fetchNextPage()}
             error={threads.isError}
             detailsOpen={selectedThread !== null}
             emptyInbox={inboxIsEmpty}
             onSearch={(query) => updateQuery("q", query)}
             onFilter={(nextFilter) => updateQuery("filter", nextFilter, "all")}
             onSelectLabel={(id) => updateQuery("label", id === null ? "" : String(id))}
-            onSelectMailbox={selectMailbox}
+            onSelectScope={selectScope}
             onOpenSettings={openSettings}
             onCompose={() => openCompose(selectedMailbox)}
             onOpenMailboxSettings={(id) => navigate(`/settings/inboxes/${id}`)}
             onSelect={(id) =>
-              navigate({ pathname: threadPath(selectedMailbox, id), search: location.search })
+              navigate({ pathname: `${threadListBase(listPath)}/${id}`, search: location.search })
             }
           />
           <main
@@ -255,6 +300,7 @@ function Workspace(props: {
             {selectedThread !== null ? (
               <ThreadView
                 threadId={selectedThread}
+                deferMarkRead={autoSelected}
                 onBack={() => navigate({ pathname: listPath, search: location.search })}
                 onMoved={() => navigate({ pathname: listPath, search: location.search })}
               />
@@ -301,11 +347,9 @@ function parseId(value: string | undefined): number | null {
 }
 
 function parseFilter(value: string | null): ThreadFilter {
-  return value === "unread" || value === "drafts" || value === "archived" ? value : "all";
+  return value === "unread" ? value : "all";
 }
 
-function threadPath(mailboxId: number | null, threadId: number): string {
-  return mailboxId === null
-    ? `/inbox/${threadId}`
-    : `/mailboxes/${mailboxId}/threads/${threadId}`;
+function threadListBase(listPath: string): string {
+  return listPath.startsWith("/mailboxes/") ? `${listPath}/threads` : listPath;
 }

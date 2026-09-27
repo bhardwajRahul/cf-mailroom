@@ -148,31 +148,44 @@ export const updateLabel = (id: number, input: Partial<LabelInput>) =>
 export const deleteLabel = (id: number) =>
   request<{ ok: true }>(`/labels/${id}`, { method: "DELETE" });
 
-function threadListParams(
-  mailboxId: number | null,
-  labelId: number | null,
-  status: ThreadSummary["status"],
-) {
-  const params = new URLSearchParams();
-  if (mailboxId !== null) params.set("mailbox_id", String(mailboxId));
-  if (labelId !== null) params.set("label_id", String(labelId));
-  if (status !== "open") params.set("status", status);
-  const query = params.toString();
-  return query ? `?${query}` : "";
+export const THREAD_PAGE_SIZE = 50;
+
+export interface ThreadQuery {
+  mailboxId: number | null;
+  labelId: number | null;
+  status: ThreadSummary["status"];
+  unread: boolean;
 }
 
-export const fetchThreads = (
-  mailboxId: number | null,
-  labelId: number | null = null,
-  status: ThreadSummary["status"] = "open",
-) => request<ThreadSummary[]>(`/threads${threadListParams(mailboxId, labelId, status)}`);
+export interface ThreadCursor {
+  at: string;
+  id: number;
+}
+
+function threadScopeParams(query: Omit<ThreadQuery, "status">) {
+  const params = new URLSearchParams();
+  if (query.mailboxId !== null) params.set("mailbox_id", String(query.mailboxId));
+  if (query.labelId !== null) params.set("label_id", String(query.labelId));
+  if (query.unread) params.set("unread", "1");
+  return params;
+}
+
+export const fetchThreads = (query: ThreadQuery, cursor: ThreadCursor | null = null) => {
+  const params = threadScopeParams(query);
+  if (query.status !== "open") params.set("status", query.status);
+  if (cursor) {
+    params.set("before_at", cursor.at);
+    params.set("before_id", String(cursor.id));
+  }
+  const search = params.toString();
+  return request<ThreadSummary[]>(`/threads${search ? `?${search}` : ""}`);
+};
 
 export const fetchThread = (id: number) => request<ThreadDetail>(`/threads/${id}`);
 
-export const searchThreads = (q: string, mailboxId: number | null, labelId: number | null = null) => {
-  const params = new URLSearchParams({ q });
-  if (mailboxId !== null) params.set("mailbox_id", String(mailboxId));
-  if (labelId !== null) params.set("label_id", String(labelId));
+export const searchThreads = (q: string, query: Omit<ThreadQuery, "status">) => {
+  const params = threadScopeParams(query);
+  params.set("q", q);
   return request<ThreadSummary[]>(`/search?${params}`);
 };
 

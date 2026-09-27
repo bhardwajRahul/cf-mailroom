@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
 import {
   archiveThread,
   createDraft,
@@ -11,14 +10,14 @@ import {
   sendReply,
   unarchiveThread,
 } from "../api";
-import type { Draft, DraftRun, Message } from "../../shared/types";
+import type { Draft, Message } from "../../shared/types";
 import {
   deriveAgentDraftStatus,
   type AgentDraftStatus,
 } from "../../shared/agent-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { formatTime, splitQuotedTail } from "../lib";
 import { EmailAvatar } from "./EmailAvatar";
@@ -26,17 +25,18 @@ import { EmailHtmlBody } from "./EmailHtmlBody";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
-  ChevronDownIcon,
   InboxIcon,
   PaperclipIcon,
   SendIcon,
   SparklesIcon,
+  TagIcon,
   XIcon,
 } from "./Icons";
 import { LinkifiedText } from "./LinkifiedText";
 
 export function ThreadView(props: {
   threadId: number;
+  deferMarkRead?: boolean;
   onBack: () => void;
   onMoved: () => void;
 }) {
@@ -45,6 +45,8 @@ export function ThreadView(props: {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [sendNotice, setSendNotice] = useState<string | null>(null);
   const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
+  const [usedDraftId, setUsedDraftId] = useState<number | null>(null);
+  const markedRead = useRef<number | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attemptIds = useRef(new Map<string, { text: string; id: string }>());
@@ -58,17 +60,27 @@ export function ThreadView(props: {
     },
   });
 
-  useEffect(() => {
+  const markThreadRead = useCallback(() => {
+    if (markedRead.current === props.threadId) return;
+    markedRead.current = props.threadId;
     markRead(props.threadId).then(() => {
       queryClient.invalidateQueries({ queryKey: ["threads"] });
       queryClient.invalidateQueries({ queryKey: ["mailboxes"] });
     });
+  }, [props.threadId, queryClient]);
+
+  useEffect(() => {
+    if (!props.deferMarkRead) markThreadRead();
+  }, [props.deferMarkRead, markThreadRead]);
+
+  useEffect(() => {
     setReplyText("");
     setPendingFiles([]);
     setSendNotice(null);
     setFailedAttemptKey(null);
+    setUsedDraftId(null);
     attemptIds.current.clear();
-  }, [props.threadId, queryClient]);
+  }, [props.threadId]);
 
   useEffect(() => {
     if (!detail.data) return;
@@ -94,9 +106,10 @@ export function ThreadView(props: {
     }) =>
       sendReply(props.threadId, args.text, args.attemptId, args.draftId, args.files ?? []),
     onSuccess: (result, args) => {
-      if (result.status === "sent" && args.draftId === undefined) {
+      if (result.status === "sent") {
         setReplyText("");
         setPendingFiles([]);
+        setUsedDraftId(null);
       }
       setFailedAttemptKey(null);
       setSendNotice(
@@ -111,7 +124,13 @@ export function ThreadView(props: {
 
   const discard = useMutation({
     mutationFn: (draftId: number) => discardDraft(draftId),
-    onSuccess: invalidateAll,
+    onSuccess: (_result, draftId) => {
+      if (usedDraftId === draftId) {
+        setReplyText("");
+        setUsedDraftId(null);
+      }
+      invalidateAll();
+    },
   });
 
   const moveThread = useMutation({
@@ -173,9 +192,7 @@ export function ThreadView(props: {
     latestInboundIsAutomated: Boolean(thread.latest_inbound_is_auto_submitted),
     lastMessageDirection: thread.last_message_direction,
   });
-  const latestInboundMessageId = [...messages]
-    .reverse()
-    .find((message) => message.direction === "inbound")?.id;
+  const draft = drafts.at(-1) ?? null;
 
   const attemptFor = (key: string, text: string) => {
     const existing = attemptIds.current.get(key);
@@ -189,13 +206,20 @@ export function ThreadView(props: {
     const text = replyText.trim();
     if ((text || pendingFiles.length > 0) && !reply.isPending) {
       const fingerprint = `${text} ${pendingFiles.map((file) => `${file.name}:${file.size}`).join(",")}`;
+      const attemptKey = usedDraftId === null ? "manual" : `draft-${usedDraftId}`;
       reply.mutate({
         text,
         files: pendingFiles,
-        attemptId: attemptFor("manual", fingerprint),
-        attemptKey: "manual",
+        draftId: usedDraftId ?? undefined,
+        attemptId: attemptFor(attemptKey, fingerprint),
+        attemptKey,
       });
     }
+  };
+
+  const applyDraft = (next: Draft) => {
+    setReplyText(next.text_body);
+    setUsedDraftId(next.id);
   };
 
   const addFiles = (list: FileList | null) => {
@@ -205,7 +229,12 @@ export function ThreadView(props: {
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-canvas">
+    <div
+      className="flex h-full min-w-0 flex-col bg-canvas"
+      onPointerDown={markThreadRead}
+      onKeyDown={markThreadRead}
+      onWheel={markThreadRead}
+    >
       <header className="flex min-h-16 shrink-0 items-center gap-3 border-b bg-background px-4 py-2.5 md:px-6">
         <Button
           variant="ghost"
@@ -229,6 +258,20 @@ export function ThreadView(props: {
             <span className="shrink-0 tabular-nums">
               {thread.message_count} {thread.message_count === 1 ? "message" : "messages"}
             </span>
+            {thread.labels.length > 0 && (
+              <span className="ml-1 hidden min-w-0 items-center gap-1 overflow-hidden sm:flex">
+                {thread.labels.map((label) => (
+                  <Badge
+                    key={label.id}
+                    variant="outline"
+                    className="h-5 shrink-0 gap-1 rounded-md px-1.5 text-[11px] font-normal text-foreground/75"
+                  >
+                    <TagIcon className="h-3 w-3 text-muted-foreground" />
+                    {label.name}
+                  </Badge>
+                ))}
+              </span>
+            )}
           </div>
         </div>
         {thread.status === "archived" ? (
@@ -263,46 +306,7 @@ export function ThreadView(props: {
       <div ref={conversationRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mr-auto w-full max-w-[800px] space-y-3 px-4 py-5 sm:px-6 md:py-6">
           {messages.map((message) => (
-            <MessageCard
-              key={message.id}
-              message={message}
-              agentState={
-                drafts.length === 0 && message.id === latestInboundMessageId
-                  ? {
-                      status: agentStatus,
-                      run: detail.data.draft_run,
-                      settingsHref: `/settings/inboxes/${thread.mailbox_id}`,
-                      retrying: retryDraft.isPending,
-                      starting: startDraft.isPending,
-                      startError:
-                        startDraft.isError && startDraft.error instanceof Error
-                          ? startDraft.error.message
-                          : null,
-                      onRetry: () => {
-                        if (detail.data.draft_run) retryDraft.mutate(detail.data.draft_run.id);
-                      },
-                      onStart: () => startDraft.mutate(),
-                    }
-                  : null
-              }
-            />
-          ))}
-          {drafts.map((draft) => (
-            <DraftCard
-              key={draft.id}
-              draft={draft}
-              sending={reply.isPending}
-              discarding={discard.isPending}
-              onSend={(text) =>
-                reply.mutate({
-                  text,
-                  draftId: draft.id,
-                  attemptKey: `draft-${draft.id}`,
-                  attemptId: attemptFor(`draft-${draft.id}`, text.trim()),
-                })
-              }
-              onDiscard={() => discard.mutate(draft.id)}
-            />
+            <MessageCard key={message.id} message={message} />
           ))}
         </div>
       </div>
@@ -310,13 +314,36 @@ export function ThreadView(props: {
       <footer className="shrink-0 bg-canvas px-4 pt-1 pb-3 sm:px-6 sm:pb-5">
         <div className="mr-auto w-full max-w-[800px]">
           <Card className="gap-0 py-0 shadow-[0_1px_2px_oklch(0.2_0.012_265/0.04),0_4px_16px_-6px_oklch(0.2_0.012_265/0.08)] transition-shadow focus-within:ring-foreground/25">
-            <div className="flex min-w-0 items-center gap-1.5 border-b border-border/70 px-3.5 py-2 text-xs text-muted-foreground">
+            <div className="flex min-h-9 min-w-0 items-center gap-1.5 border-b border-border/70 py-1 pr-2 pl-3.5 text-xs text-muted-foreground">
               <span className="shrink-0">Replying from</span>
-              <span className="truncate font-medium text-foreground/80">{thread.mailbox_address}</span>
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground/80">
+                {thread.mailbox_address}
+              </span>
+              <DraftAssist
+                status={agentStatus}
+                draft={draft}
+                usingDraft={usedDraftId !== null}
+                error={
+                  startDraft.isError && startDraft.error instanceof Error
+                    ? startDraft.error.message
+                    : detail.data.draft_run?.error ?? null
+                }
+                busy={retryDraft.isPending || startDraft.isPending || discard.isPending}
+                disabled={reply.isPending}
+                onUse={() => draft && applyDraft(draft)}
+                onDiscard={() => draft && discard.mutate(draft.id)}
+                onRetry={() => {
+                  if (detail.data.draft_run) retryDraft.mutate(detail.data.draft_run.id);
+                }}
+                onStart={() => startDraft.mutate()}
+              />
             </div>
             <Textarea
               value={replyText}
-              onChange={(event) => setReplyText(event.target.value)}
+              onChange={(event) => {
+                setReplyText(event.target.value);
+                if (!event.target.value.trim()) setUsedDraftId(null);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                   event.preventDefault();
@@ -432,24 +459,7 @@ export function ThreadView(props: {
   );
 }
 
-interface MessageAgentStateProps {
-  status: AgentDraftStatus;
-  run: DraftRun | null;
-  settingsHref: string;
-  retrying: boolean;
-  starting: boolean;
-  startError: string | null;
-  onRetry: () => void;
-  onStart: () => void;
-}
-
-function MessageCard({
-  message,
-  agentState,
-}: {
-  message: Message;
-  agentState: MessageAgentStateProps | null;
-}) {
+function MessageCard({ message }: { message: Message }) {
   const [showQuoted, setShowQuoted] = useState(false);
   const isOutbound = message.direction === "outbound";
   const displayName = isOutbound
@@ -530,79 +540,104 @@ function MessageCard({
           )}
         </div>
       )}
-      {agentState && <MessageAgentState {...agentState} />}
     </Card>
   );
 }
 
-function MessageAgentState(props: MessageAgentStateProps) {
-  if (props.status === "none" || props.status === "draft_ready") return null;
-
-  const content: Partial<Record<AgentDraftStatus, { title: string; detail: string }>> = {
-    processing: {
-      title: "AI is preparing a draft",
-      detail: "This conversation updates automatically when the draft is ready.",
-    },
-    failed: {
-      title: "AI couldn’t create a draft",
-      detail: props.run?.error || "The model did not return a draft.",
-    },
-    skipped: {
-      title: "AI skipped this message",
-      detail:
-        props.run?.error ||
-        "Automated messages and messages replaced by a newer reply are not drafted.",
-    },
-    off: {
-      title: "AI drafting is off",
-      detail: "Turn it on for this inbox in Settings to draft future replies.",
-    },
-    not_processed: {
-      title: "Not processed by AI",
-      detail: props.startError || "AI never started on this message.",
-    },
-    processed: {
-      title: "AI processing is complete",
-      detail: "There is no draft awaiting review.",
-    },
-  };
-  const state = content[props.status];
-  if (!state) return null;
-  const working = props.status === "processing";
-  const failed = props.status === "failed";
-
-  return (
-    <div
-      className={`-mx-4 -mb-4 mt-4 flex items-start gap-2.5 border-t px-4 py-3 sm:-mx-5 sm:-mb-5 sm:items-center sm:px-5 ${
-        failed ? "border-destructive/15 bg-destructive/5" : "border-border/70 bg-muted/40"
-      }`}
+function DraftAssist(props: {
+  status: AgentDraftStatus;
+  draft: Draft | null;
+  usingDraft: boolean;
+  error: string | null;
+  busy: boolean;
+  disabled: boolean;
+  onUse: () => void;
+  onDiscard: () => void;
+  onRetry: () => void;
+  onStart: () => void;
+}) {
+  const action = (label: string, onClick: () => void, title?: string) => (
+    <Button
+      variant="ghost"
+      size="xs"
+      className="text-muted-foreground hover:text-foreground"
+      onClick={onClick}
+      disabled={props.busy || props.disabled}
+      title={title}
     >
-      <span className={`mt-0.5 shrink-0 sm:mt-0 ${failed ? "text-destructive" : "text-muted-foreground"}`}>
-        <SparklesIcon className={`h-3.5 w-3.5 ${working ? "animate-pulse" : ""}`} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className={`text-[13px] font-medium ${failed ? "text-destructive" : "text-foreground"}`}>
-          {state.title}
-        </p>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{state.detail}</p>
-      </div>
-      {failed && props.run && (
-        <Button variant="outline" size="sm" className="shrink-0" onClick={props.onRetry} disabled={props.retrying}>
-          {props.retrying ? "Retrying…" : "Try again"}
-        </Button>
-      )}
-      {props.status === "off" && (
-        <Button asChild variant="outline" size="sm" className="shrink-0">
-          <Link to={props.settingsHref}>Open settings</Link>
-        </Button>
-      )}
-      {props.status === "not_processed" && (
-        <Button variant="outline" size="sm" className="shrink-0" onClick={props.onStart} disabled={props.starting}>
-          {props.starting ? "Creating…" : "Create draft"}
-        </Button>
-      )}
-    </div>
+      {label}
+    </Button>
   );
+
+  if (props.draft) {
+    const context = [
+      props.draft.playbook_name ? `Playbook: ${props.draft.playbook_name}` : null,
+      props.draft.agent_notes,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    return (
+      <span className="flex shrink-0 items-center gap-0.5">
+        {props.usingDraft ? (
+          <span className="flex items-center gap-1 px-1.5" title={context || undefined}>
+            <SparklesIcon className="h-3 w-3" />
+            Using AI draft
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-foreground/80"
+            onClick={props.onUse}
+            disabled={props.busy || props.disabled}
+            title={context || undefined}
+          >
+            <SparklesIcon className="h-3 w-3" />
+            Use AI draft
+          </Button>
+        )}
+        {action("Discard", props.onDiscard, "Discard AI draft")}
+      </span>
+    );
+  }
+
+  if (props.status === "processing") {
+    return (
+      <span className="flex shrink-0 items-center gap-1 px-1.5">
+        <SparklesIcon className="h-3 w-3 animate-pulse" />
+        Drafting…
+      </span>
+    );
+  }
+
+  if (props.status === "failed") {
+    return (
+      <span className="flex shrink-0 items-center gap-0.5">
+        <span className="px-1.5" title={props.error ?? undefined}>
+          AI draft unavailable
+        </span>
+        {action(props.busy ? "Retrying…" : "Retry", props.onRetry)}
+      </span>
+    );
+  }
+
+  if (props.status === "not_processed") {
+    return (
+      <Button
+        variant="ghost"
+        size="xs"
+        className="shrink-0 text-muted-foreground hover:text-foreground"
+        onClick={props.onStart}
+        disabled={props.busy || props.disabled}
+        title={props.error ?? undefined}
+      >
+        <SparklesIcon className="h-3 w-3" />
+        {props.busy ? "Drafting…" : "Draft with AI"}
+      </Button>
+    );
+  }
+
+  return null;
 }
 
 function formatFileSize(bytes: number): string {
@@ -629,80 +664,6 @@ function AuthorBadge(props: { tone: "agent" | "human"; children: React.ReactNode
     >
       {props.children}
     </Badge>
-  );
-}
-
-function DraftCard(props: {
-  draft: Draft;
-  sending: boolean;
-  discarding: boolean;
-  onSend: (text: string) => void;
-  onDiscard: () => void;
-}) {
-  const [text, setText] = useState(props.draft.text_body);
-
-  return (
-    <Card className="gap-0 py-0 shadow-[0_1px_2px_oklch(0.2_0.012_265/0.04),0_6px_20px_-8px_oklch(0.2_0.012_265/0.12)] ring-foreground/20">
-      <CardHeader className="flex flex-row items-center gap-3 border-b bg-muted/40 px-4 py-3 sm:px-5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <SparklesIcon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[13.5px] font-semibold text-foreground">Agent draft</span>
-            <Badge variant="outline" className="h-5 rounded-md bg-background px-1.5 text-[11px] font-medium">
-              Needs review
-            </Badge>
-          </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {props.draft.playbook_name ? (
-              <>
-                Playbook: <span className="font-medium text-foreground/80">{props.draft.playbook_name}</span>
-              </>
-            ) : (
-              "No playbook"
-            )}
-          </p>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-4 sm:p-5">
-        {props.draft.agent_notes && (
-          <details className="group mb-3 rounded-lg border bg-muted/30">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground outline-none transition-colors marker:hidden hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-              <ChevronDownIcon className="h-3.5 w-3.5 -rotate-90 transition-transform group-open:rotate-0" />
-              Agent context
-            </summary>
-            <p className="px-3 pb-3 pl-8 text-[12.5px] leading-5 text-muted-foreground">{props.draft.agent_notes}</p>
-          </details>
-        )}
-        <Textarea
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          rows={7}
-          aria-label="Draft reply"
-          className="min-h-40 w-full resize-y bg-background px-3 py-2.5 text-sm leading-6 md:text-sm"
-        />
-        <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              onClick={props.onDiscard}
-              disabled={props.discarding || props.sending}
-            >
-              {props.discarding ? "Discarding…" : "Discard"}
-            </Button>
-            <Button
-              onClick={() => props.onSend(text)}
-              disabled={!text.trim() || props.sending || props.discarding}
-            >
-              <SendIcon className="h-3.5 w-3.5" />
-              {props.sending ? "Sending…" : "Approve & send"}
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
