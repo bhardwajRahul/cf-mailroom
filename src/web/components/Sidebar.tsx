@@ -29,9 +29,6 @@ export function Sidebar(props: {
         </p>
       </div>
 
-      <div className="px-3 pb-3 pt-1">
-        <Button onClick={props.onCompose} className="w-full justify-start"><SquarePen className="h-4 w-4" />Compose</Button>
-      </div>
       <nav aria-label="Inboxes" className="flex-1 overflow-y-auto px-2 pt-1 pb-4">
         <SidebarItem
           label="All inboxes"
@@ -60,6 +57,9 @@ export function Sidebar(props: {
         )}
       </nav>
 
+      <div className="shrink-0 px-3 pb-3 pt-1">
+        <Button onClick={props.onCompose} className="w-full justify-start"><SquarePen className="h-4 w-4" />Compose</Button>
+      </div>
       <div className="border-t px-2 py-2">
         <SidebarItem
           label="Settings"
