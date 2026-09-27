@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { SquarePen } from "lucide-react";
 import type { Label, Mailbox, ThreadSummary } from "../../shared/types";
 import {
   deriveAgentDraftStatus,
@@ -53,6 +54,7 @@ export function ThreadList(props: {
   onSelectLabel: (id: number | null) => void;
   onSelectMailbox: (id: number | null) => void;
   onOpenSettings: () => void;
+  onCompose: () => void;
   onOpenMailboxSettings: (id: number) => void;
   onSelect: (id: number) => void;
 }) {
@@ -202,6 +204,7 @@ export function ThreadList(props: {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="ghost" size="icon" onClick={props.onCompose} aria-label="Compose new message" title="Compose new message" className="shrink-0"><SquarePen className="h-4 w-4" /></Button>
             <Button
               variant="ghost"
               size="icon"

@@ -1,5 +1,6 @@
 import type {
   BrowserPushSubscription,
+  ComposeAttemptResult,
   Domain,
   GeneralSettings,
   Label,
@@ -28,6 +29,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const fetchMailboxes = () => request<Mailbox[]>("/mailboxes");
+
+export class ComposeRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+export async function composeEmail(input: {
+  mailboxId: number;
+  to: string;
+  subject: string;
+  text: string;
+  files: File[];
+  attemptId: string;
+}): Promise<ComposeAttemptResult> {
+  const form = new FormData();
+  form.set("mailbox_id", String(input.mailboxId));
+  form.set("to", input.to);
+  form.set("subject", input.subject);
+  form.set("text", input.text);
+  form.set("attempt_id", input.attemptId);
+  for (const file of input.files) form.append("attachments", file, file.name);
+  const response = await fetch("/api/compose", { method: "POST", body: form });
+  const body = await response.json() as ComposeAttemptResult & { error?: string };
+  // Provider failures are terminal send results, distinct from an uncertain
+  // network/server failure where the same attempt must be checked again.
+  if (["sent", "failed", "pending", "sending"].includes(body.status)) return body;
+  throw new ComposeRequestError(body.error ?? `Could not send (${response.status})`, response.status);
+}
 
 export const fetchGeneralSettings = () =>
   request<GeneralSettings>("/settings/general");

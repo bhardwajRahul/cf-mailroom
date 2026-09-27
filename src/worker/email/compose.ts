@@ -1,4 +1,6 @@
 import { normalizeSubject } from "./rules.ts";
+import type { ComposeAttemptResult } from "../../shared/types.ts";
+export type { ComposeAttemptResult } from "../../shared/types.ts";
 import {
   attachmentFingerprint,
   normalizeAttachments,
@@ -28,18 +30,10 @@ export interface ComposeIntent {
   actorId?: string;
   oauthClientId?: string;
   dailySendLimit?: number;
+  sentBy?: "human" | "agent";
 }
 
 export type ComposeAttemptStatus = "pending" | "sending" | "sent" | "failed";
-
-export interface ComposeAttemptResult {
-  ok: boolean;
-  attempt_id: string;
-  status: ComposeAttemptStatus;
-  conversation_id: number | null;
-  message_id: string | null;
-  error?: string;
-}
 
 interface StoredAttempt {
   id: string;
@@ -54,6 +48,7 @@ interface StoredAttempt {
   actor_id: string | null;
   oauth_client_id: string | null;
   error: string | null;
+  sent_by: "human" | "agent";
 }
 
 export async function sendNewEmailAttempt(
@@ -107,8 +102,8 @@ export async function sendNewEmailAttempt(
       await env.DB.prepare(
         `INSERT INTO outbound_attempts
            (id, mailbox_id, status, to_addresses, subject, text_body, attachments,
-            actor_id, oauth_client_id)
-         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+            actor_id, oauth_client_id, sent_by)
+         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
       )
         .bind(
           normalized.attemptId,
@@ -119,6 +114,7 @@ export async function sendNewEmailAttempt(
           JSON.stringify(staged),
           normalized.actorId ?? null,
           normalized.oauthClientId ?? null,
+          normalized.sentBy ?? "agent",
         )
         .run();
       if (
@@ -191,7 +187,7 @@ export async function sendNewEmailAttempt(
         subject: normalized.subject,
         text: normalized.text,
         attachments: sendableAttachments(attachments),
-        autoSubmitted: "auto-generated",
+        autoSubmitted: normalized.sentBy === "human" ? undefined : "auto-generated",
         attemptId: normalized.attemptId,
       }));
     } catch (error) {
@@ -228,10 +224,11 @@ export async function sendNewEmailAttempt(
          (thread_id, message_id, references_ids, direction, sent_by,
           from_address, from_name, to_addresses, reply_to_addresses,
           subject, text_body, created_at)
-       VALUES (?, ?, '[]', 'outbound', 'agent', ?, NULL, ?, '[]', ?, ?, ?)`,
+       VALUES (?, ?, '[]', 'outbound', ?, ?, NULL, ?, '[]', ?, ?, ?)`,
     ).bind(
       conversationId,
       messageId,
+      normalized.sentBy ?? "agent",
       inbox.address,
       JSON.stringify(normalized.to),
       normalized.subject,
@@ -294,7 +291,8 @@ function existingResult(
     attachmentFingerprint(parseStagedAttachments(existing.attachments)) !==
       attachmentFingerprint(attachments) ||
     existing.actor_id !== (intent.actorId ?? null) ||
-    existing.oauth_client_id !== (intent.oauthClientId ?? null)
+    existing.oauth_client_id !== (intent.oauthClientId ?? null) ||
+    (existing.sent_by ?? "agent") !== (intent.sentBy ?? "agent")
   ) {
     throw new ComposeIntentError("Send Attempt id was already used for different content", 409);
   }

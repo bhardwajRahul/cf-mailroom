@@ -165,3 +165,7 @@ export interface ReplyAttemptResult {
   message_id: string | null;
   error?: string;
 }
+
+export interface ComposeAttemptResult extends ReplyAttemptResult {
+  conversation_id: number | null;
+}

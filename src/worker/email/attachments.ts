@@ -1,9 +1,9 @@
 import { attachmentBytes } from "./rules.ts";
+import { MAX_ATTACHMENTS_PER_MESSAGE, MAX_ATTACHMENT_TOTAL_BYTES } from "../../shared/email-limits.ts";
+export { MAX_ATTACHMENTS_PER_MESSAGE, MAX_ATTACHMENT_TOTAL_BYTES } from "../../shared/email-limits.ts";
 
 // The provider caps the whole MIME message at 5 MiB; base64 inflates payload
 // by ~4/3, so 3 MiB of raw attachment bytes stays safely under the limit.
-export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
-export const MAX_ATTACHMENT_TOTAL_BYTES = 3 * 1024 * 1024;
 const MAX_FILENAME_CHARS = 200;
 const MAX_CONTENT_TYPE_CHARS = 200;
 const MAX_CONTENT_ID_CHARS = 200;

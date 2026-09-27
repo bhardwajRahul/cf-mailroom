@@ -73,6 +73,7 @@ class FakeDb {
         attachments: args[5],
         actor_id: args[6],
         oauth_client_id: args[7],
+        sent_by: args[8],
         message_id: null,
         error: null,
       });
@@ -88,7 +89,7 @@ class FakeDb {
     } else if (sql.includes("INSERT INTO threads")) {
       this.threads.set(args[0], { id: args[0], message_count: 0 });
     } else if (sql.includes("INSERT INTO messages")) {
-      this.messages.push({ thread_id: args[0], message_id: args[1], to: args[3] });
+      this.messages.push({ thread_id: args[0], message_id: args[1], sent_by: args[2], to: args[4] });
     } else if (sql.includes("UPDATE threads") && sql.includes("message_count = 1")) {
       this.threads.get(args[2]).message_count = 1;
     } else if (sql.includes("SET status = 'sent'")) {
@@ -151,6 +152,8 @@ test("a new-email Send Attempt is recorded in the inbox and sent once", async ()
   assert.deepEqual(replay, first);
   assert.equal(fixture.sends(), 1);
   assert.equal(fixture.db.messages.length, 1);
+  assert.equal(fixture.db.messages[0].sent_by, "agent");
+  assert.equal(fixture.sent()[0].headers["Auto-Submitted"], "auto-generated");
   assert.equal(fixture.db.threads.get(first.conversation_id).message_count, 1);
 });
 

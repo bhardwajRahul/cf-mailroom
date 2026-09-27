@@ -1,6 +1,8 @@
 import type { Mailbox } from "../../shared/types";
 import { cn } from "@/lib/utils";
 import { InboxIcon, MailIcon, SettingsIcon } from "./Icons";
+import { SquarePen } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export function Sidebar(props: {
   mailboxes: Mailbox[];
@@ -8,6 +10,7 @@ export function Sidebar(props: {
   activeView: "inbox" | "settings";
   onSelect: (id: number | null) => void;
   onOpenSettings: () => void;
+  onCompose: () => void;
 }) {
   const totalUnread = props.mailboxes.reduce((sum, mailbox) => sum + mailbox.unread_count, 0);
 
@@ -26,6 +29,9 @@ export function Sidebar(props: {
         </p>
       </div>
 
+      <div className="px-3 pb-3 pt-1">
+        <Button onClick={props.onCompose} className="w-full justify-start"><SquarePen className="h-4 w-4" />Compose</Button>
+      </div>
       <nav aria-label="Inboxes" className="flex-1 overflow-y-auto px-2 pt-1 pb-4">
         <SidebarItem
           label="All inboxes"

@@ -12,6 +12,7 @@ import {
 import { fetchLabels, fetchMailboxes, fetchThreads, searchThreads } from "./api";
 import { AgentSettings } from "./components/AgentSettings";
 import { GeneralSettings } from "./components/GeneralSettings";
+import { ComposeEmailProvider, useCompose } from "./components/ComposeEmail";
 import { InboxIcon } from "./components/Icons";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadList, type ThreadFilter } from "./components/ThreadList";
@@ -22,6 +23,7 @@ type SettingsSection = "general" | "inboxes";
 
 export function App() {
   return (
+    <ComposeEmailProvider>
     <Routes>
       <Route path="/" element={<Navigate to="/inbox" replace />} />
       <Route path="/inbox" element={<Workspace view="inbox" />} />
@@ -46,6 +48,7 @@ export function App() {
       />
       <Route path="*" element={<Navigate to="/inbox" replace />} />
     </Routes>
+    </ComposeEmailProvider>
   );
 }
 
@@ -55,6 +58,7 @@ function Workspace(props: {
   settingsSection?: SettingsSection;
 }) {
   const navigate = useNavigate();
+  const openCompose = useCompose();
   const location = useLocation();
   const params = useParams<{ mailboxId?: string; threadId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -187,6 +191,7 @@ function Workspace(props: {
         activeView={props.view}
         onSelect={selectMailbox}
         onOpenSettings={openSettings}
+        onCompose={() => openCompose(selectedMailbox)}
       />
 
       {props.view === "settings" ? (
@@ -237,6 +242,7 @@ function Workspace(props: {
             onSelectLabel={(id) => updateQuery("label", id === null ? "" : String(id))}
             onSelectMailbox={selectMailbox}
             onOpenSettings={openSettings}
+            onCompose={() => openCompose(selectedMailbox)}
             onOpenMailboxSettings={(id) => navigate(`/settings/inboxes/${id}`)}
             onSelect={(id) =>
               navigate({ pathname: threadPath(selectedMailbox, id), search: location.search })

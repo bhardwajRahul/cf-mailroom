@@ -1,7 +1,7 @@
 # Mailroom
 
-A self-hosted email system shared by humans and AI agents. Humans read and reply
-through a Gmail-style web UI; agents read and reply through MCP. Inbound mail
+A self-hosted email system shared by humans and AI agents. Humans read, compose, and reply
+through a Gmail-style web UI; agents read and send through MCP. Inbound mail
 can be triaged with automatic labels and answered by an agent-drafted reply,
 held for one-click human approval.
 
@@ -50,6 +50,10 @@ new inbound Message ──► Web Push ──► subscribed browsers
   on Cloudflare Queues. Stale runs cannot overwrite a newer Agent Draft.
 - **At-most-once replies**: every approved send is a durable Reply Attempt.
   Browser retries reuse it rather than sending the customer another email.
+- **Compose new mail**: choose a sending Inbox, enter one recipient, a subject,
+  and a message or attachments. Successful sends open their new Conversation.
+  Closing the composer keeps its draft in memory until the page is reloaded or
+  closed; uncertain sends reuse the same attempt when checking their status.
 - **MCP sends stay visible**: external agents use durable Reply/Send Attempts,
   so new mail and replies are written to the same Conversations the Web UI
   reads. Stable idempotency keys prevent retries from sending twice.

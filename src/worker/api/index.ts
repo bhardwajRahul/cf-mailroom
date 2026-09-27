@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { requireSameOrigin } from "./csrf.ts";
+import { composeApi } from "./compose.ts";
 import { enqueueDraftRun } from "../agent/runs";
 import {
   AttachmentInputError,
@@ -28,6 +29,7 @@ import type {
 
 export const api = new Hono<{ Bindings: Env }>();
 api.use("*", requireSameOrigin);
+api.route("/compose", composeApi);
 
 api.get("/settings/general", async (c) => {
   const [settings, subscriptions] = await Promise.all([
