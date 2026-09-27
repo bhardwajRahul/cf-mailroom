@@ -6,10 +6,25 @@
   "name": "mailroom",
   "main": "src/worker/dev.ts",
   "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/cdn-cgi/handler/email"]
+    "run_worker_first": [
+      "/api/*",
+      "/mcp",
+      "/mcp/*",
+      "/oauth/*",
+      "/.well-known/*",
+      "/authorize",
+      "/cdn-cgi/handler/email"
+    ]
   },
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "local-oauth"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

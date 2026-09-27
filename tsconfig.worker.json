@@ -12,5 +12,5 @@
     "isolatedModules": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/worker", "src/shared"]
+  "include": ["src/worker", "src/mcp", "src/shared"]
 }

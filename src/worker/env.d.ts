@@ -24,6 +24,9 @@ interface Env {
   EMAIL: OutboundEmailBinding;
   AI: Ai;
   DRAFT_QUEUE: Queue<{ runId: number }>;
+  OAUTH_KV: KVNamespace;
+  MCP_SEND_ENABLED?: string;
+  MCP_DAILY_SEND_LIMIT?: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_JWK?: string;
   VAPID_SUBJECT?: string;

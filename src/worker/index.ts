@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { withMcp } from "../mcp/index.ts";
 import { api } from "./api";
 import { requireWebAccess } from "./api/access.ts";
 import { processDraftRun } from "./agent/draft";
@@ -9,7 +10,7 @@ app.use("/api/*", requireWebAccess);
 app.route("/api", api);
 
 export default {
-  fetch: app.fetch,
+  fetch: withMcp(app),
   email: receiveEmail,
   async queue(batch: MessageBatch<{ runId: number }>, env: Env): Promise<void> {
     await Promise.all(

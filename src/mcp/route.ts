@@ -1,8 +1,8 @@
-export const MCP_ROUTE = "/v1";
+export const MCP_ROUTE = "/mcp";
 
 /**
  * OAuthProvider uses prefix matching for API routes. Keep the public endpoint
- * exact so `/v1/`, `/v10`, and `/v1/tools` cannot be mistaken for this MCP
+ * exact so `/mcp/`, `/mcpx`, and `/mcp/tools` cannot be mistaken for this MCP
  * resource.
  */
 export function isRejectedMcpRouteLookalike(pathname: string): boolean {

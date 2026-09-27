@@ -19,11 +19,12 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
 ## At a glance
 
 1. Deploy with the button — storage, queues, and migrations are automatic.
-2. Put the app behind Cloudflare Access and configure JWT validation. The API
-   rejects requests until authentication is configured.
+2. Open the app and follow its setup screen: turn on Access for the Worker, then
+   paste the two values it shows. The API rejects requests until this is done.
 3. Connect your email domain (Email Routing in, Email Sending out).
 4. Add an Inbox in Settings and send yourself a test email.
-5. Optionally connect an agent over MCP and enable browser notifications.
+5. Optionally connect an agent over MCP (built in, at `/mcp`) and enable
+   browser notifications.
 
 ## 1. Deploy the web app
 
@@ -36,7 +37,8 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
    Worker, database, bucket, and queue names.
 3. Review the resource bindings: `DB` (D1), `RAW` (R2), `AI` (Workers AI),
    `EMAIL` (Email Sending; onboard the sender domain after deploy — the binding
-   does not verify it), `DRAFT_QUEUE`, and `DRAFT_DLQ` (two distinct queues).
+   does not verify it), `DRAFT_QUEUE`, and `DRAFT_DLQ` (two distinct queues),
+   and `OAUTH_KV` (KV, for MCP OAuth clients and tokens).
    Cloudflare provisions the resources in your account and writes their values
    into your new repository.
    In `wrangler.jsonc`, the consumer's `queue` must match `DRAFT_QUEUE` and its
@@ -52,8 +54,8 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
    No VAPID secrets are required yet.
 
 Cloudflare's [Deploy to Cloudflare documentation](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
-describes resource provisioning and repository creation. The button deploys the
-web/email Worker only; the separate MCP Worker is covered below.
+describes resource provisioning and repository creation. One Worker serves the
+web app, inbound email, draft queue, and the MCP server.
 
 ### Database binding without an account-specific ID
 
@@ -73,45 +75,34 @@ uses that ID when present.
 ## 2. Protect the web app before adding email
 
 The web app uses Cloudflare Access for login and verifies its JWT on every API
-request. `wrangler.jsonc` sets `workers_dev` to true
-and `preview_urls` to false, so the deploy publishes
-`https://<worker>.<account>.workers.dev` and does not publish preview URLs.
-Static UI assets can load before Access is configured, but the API denies
-access until it receives a valid assertion for the configured application.
-Do this step before registering an Inbox or routing mail.
+request. Until that is configured, opening
+`https://<worker>.<account>.workers.dev` shows a setup screen instead of the
+inbox; the API denies every request. Do this step before registering an Inbox
+or routing mail.
 
-1. In **Zero Trust → Access → Applications**, add a **Self-hosted** application
-   for the whole `workers.dev` hostname (all paths, including `/api/*`). Add an
-   Allow policy restricted to your email address; do not use an Everyone or
-   Bypass policy.
-2. In the Worker's **Settings → Variables and Secrets**, add these Text variables:
-
-   - `WEB_ACCESS_TEAM_DOMAIN`: your team URL, such as `https://your-team.cloudflareaccess.com`.
-   - `WEB_ACCESS_AUD`: the Application Audience (AUD) Tag of the Access application
-     protecting the **web app**, not the separate MCP `/authorize` application.
+1. In **Workers & Pages → your Worker → Access**, choose **Protect this Worker
+   behind Access**. Select **All traffic** and the **Cloudflare account** policy
+   so only members of your account can sign in. Zero Trust must be enabled on
+   the account (the free plan is enough). This protects every hostname of the
+   Worker: `workers.dev`, custom domains, and previews.
+2. Reload the app and sign in. The setup screen now shows the exact
+   `WEB_ACCESS_TEAM_DOMAIN` and `WEB_ACCESS_AUD` values taken from your sign-in.
+   Add both as **Text** variables in the Worker's **Settings → Variables and
+   Secrets**.
 
    These values are not secrets. `keep_vars: true` preserves dashboard variables
    during Git-triggered deployments. Alternatively, define them in your instance's
    `wrangler.jsonc` `vars` object. Missing or invalid configuration fails closed.
-3. Leave these flags as they are in the template:
+3. Select **Check again**. The inbox opens once the Worker verifies your sign-in
+   against those values.
 
-   ```jsonc
-   "workers_dev": true,
-   "preview_urls": false
-   ```
+`wrangler.jsonc` keeps `preview_urls` off; Worker-level Access would cover them,
+but there is no reason to publish extra hostnames. A custom domain is optional;
+list it in `routes` so it survives the next deploy. If you protect individual
+hostnames with Self-hosted applications instead of the Worker-level toggle, put
+every hostname in the **same** application so they share one AUD.
 
-   `preview_urls` stays off because each preview URL is another public hostname,
-   and Access on the main `workers.dev` hostname does not cover it.
-4. A custom domain is optional. If you add one, list it in `routes` and add it
-   to the **same Access application** so both hostnames use the configured AUD.
-   Access on one hostname does not automatically cover the other. A custom domain
-   added only in the dashboard does not survive the next deploy unless it is in
-   `routes`.
-5. Open the web app in a private browser window: both the app and
-   `/api/mailboxes` must require Access login. Sign in with your allowed email
-   and verify the app loads.
-
-See [Cloudflare Access for Workers](https://developers.cloudflare.com/workers/configuration/access/).
+See [Cloudflare Access for Workers](https://developers.cloudflare.com/workers/configuration/cloudflare-access/).
 Access protects HTTP requests; it does not require inbound email or queue
 events to sign in.
 
@@ -143,42 +134,39 @@ Repeat for additional addresses or domains; they can share the same Worker.
 
 ## Optional: connect an AI agent over MCP
 
-The MCP Worker uses its own hostname and OAuth, sharing the web Worker's D1 and
-R2 resources. Do not create an empty second database or bucket for MCP.
+The MCP server is built into the same Worker at `/mcp` and is deployed with
+every push. Its OAuth state lives in the `OAUTH_KV` namespace that deployment
+creates for you. The remaining step is to let MCP clients reach the OAuth
+endpoints, which Access blocks because it protects the whole Worker.
 
-1. Clone the repository Cloudflare created for you and run `npm ci` using
-   Node.js 22.18+ or 24+, then `npx wrangler login`.
-2. Copy `wrangler.mcp.example.jsonc` to `wrangler.mcp.jsonc` (gitignored — it
-   holds your Access AUD, owner emails, and hostnames). Copy the actual `DB`
-   and `RAW` values from your web Worker's `wrangler.jsonc`. Use the same
-   Cloudflare account and database name so MCP reuses the existing database.
-3. Run `npx wrangler kv namespace create mailroom-mcp-oauth` and copy the
-   returned ID into `OAUTH_KV`. OAuth clients, grants, authorization codes, and
-   tokens live there. Pick a hostname on a domain in your Cloudflare account
-   (e.g. `mcp.example.com`) and set it in both `routes` and `MCP_HOSTNAME`.
-   Set `WEB_APP_URL` to the origin Access protects (for example
-   `https://mailroom.<account>.workers.dev`), plus `TEAM_DOMAIN` and
-   `MCP_ALLOWED_EMAILS`. MCP conversation links use `WEB_APP_URL`.
-4. In Cloudflare Zero Trust, create a Self-hosted Access application for the
-   exact destination `<MCP_HOSTNAME>/authorize` — this works before the Worker
-   exists. Restrict its Allow policy to the instance owner's email and leave
-   **Managed OAuth off**. The discovery, client registration, token,
-   revocation, and `/v1` endpoints must remain publicly reachable; only the
-   interactive consent page is behind Access. Do not protect the whole MCP
-   hostname: that would intercept standards-based OAuth endpoints before MCP
-   clients can discover or register.
-5. Copy that Access application's **AUD tag** into `POLICY_AUD`, then deploy
-   once with `npm run deploy:mcp` (the custom domain is created for you).
-   `POLICY_AUD` is application-specific and safe to publish, but it must match
-   the Access application protecting `/authorize`. If you deploy before setting
-   the real AUD, owner consent fails until you set it and redeploy.
-6. Add `https://<your-mcp-hostname>/v1` to your MCP client and authorize it.
+1. Open **Settings → General** in Mailroom. The **AI agents (MCP)** card shows
+   the server URL and checks whether the OAuth endpoints are publicly
+   reachable.
+2. If it says Access blocks them, go to **Zero Trust → Access → Applications**
+   and add a **Self-hosted** application with these destinations (use your
+   own hostname), with a single **Bypass** policy for **Everyone**:
 
-On every consent request the Worker independently validates the
-`Cf-Access-Jwt-Assertion` against the team JWKS, issuer, AUD, and owner
-allowlist before issuing a grant. The MCP config is gitignored;
-`npm run deploy:mcp` is a separate manual deployment — the web Worker's Git
-integration does not deploy it.
+   - `<worker>.<account>.workers.dev/mcp`
+   - `<worker>.<account>.workers.dev/oauth`
+   - `<worker>.<account>.workers.dev/.well-known`
+
+   A path application takes precedence over Worker-level Access. Everything
+   else, including the `/authorize` consent page, stays protected. Leave
+   **Managed OAuth off**. Add the same three paths for each custom domain you use.
+3. Select **Check again** in the card, then add the server URL
+   (`https://<worker>.<account>.workers.dev/mcp`) to your MCP client and
+   approve it.
+
+On every consent request the Worker verifies the `Cf-Access-Jwt-Assertion`
+against the same team, AUD, and signing keys as the web app before issuing a
+grant, so anyone allowed into the web app can approve MCP clients. `/mcp` itself
+only accepts OAuth access tokens. Each hostname is its own OAuth issuer, so
+clients connected via `workers.dev` and a custom domain are authorized
+separately.
+
+`MCP_SEND_ENABLED=false` (a Worker variable) removes the send tools from every
+client immediately. `MCP_DAILY_SEND_LIMIT` (default 100) caps MCP sends per
+Access identity per UTC day.
 
 ## Optional: browser notifications
 
@@ -219,8 +207,17 @@ git push
 ```
 
 Keep your own values when conflicts touch instance-specific files:
-`wrangler.jsonc` holds your Worker and resource names, and `wrangler.mcp.jsonc`
-is not tracked at all.
+`wrangler.jsonc` holds your Worker and resource names.
+
+### Upgrading from the separate MCP Worker
+
+Earlier versions deployed MCP as a second Worker (`mailroom-mcp`, configured
+by `wrangler.mcp.jsonc`). After updating, the main Worker serves MCP at
+`https://<your-web-hostname>/mcp`, with its own KV namespace. Add the Bypass
+application above, reconnect each MCP client to the new URL, then delete the
+old `mailroom-mcp` Worker, its KV namespace, and its `/authorize` Access
+application. The old Worker keeps working until you delete it. Existing grants
+do not carry over.
 
 ## Manual setup / an existing fork
 
@@ -237,7 +234,8 @@ npx wrangler queues create mailroom-drafts-dlq
 ```
 
 No database ID needs to be copied: Wrangler looks up `database_name` in your
-account. If the database already exists, skip its create command and reuse it
+account. `OAUTH_KV` has no ID either; Wrangler creates it on the first deploy
+and reuses it afterwards. If the database already exists, skip its create command and reuse it
 only if it belongs to this instance. If you chose different resource names,
 update the database, bucket, producer queues, consumer queue, and dead-letter
 queue in `wrangler.jsonc`. Local development uses `wrangler.dev.jsonc` and does
@@ -272,5 +270,9 @@ deploy automatically. Continue with Access and domain setup above.
   sender-domain verification, and the Inbox's sending address.
 - **Inbound mail does not appear:** check Email Routing targets this Worker and
   the recipient has already been added as an Inbox.
-- **MCP OAuth redirects to Access before discovery:** protect `/authorize` only,
-  not the entire MCP hostname.
+- **The setup screen keeps showing after adding variables:** saving variables
+  redeploys the Worker; wait a few seconds and select **Check again**. If it
+  says the values do not match, copy the values it shows now.
+- **MCP OAuth redirects to Access before discovery:** add the Bypass
+  application for `/mcp`, `/oauth`, and `/.well-known` on that hostname. The
+  card in **Settings → General** confirms when it works.

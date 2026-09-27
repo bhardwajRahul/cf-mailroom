@@ -95,6 +95,36 @@ test("fails closed on missing or unsafe configuration, including localhost and s
   assert.equal(calls(), 0);
 });
 
+test("failures carry setup codes, and hints only echo the request's own well-formed assertion", async (t) => {
+  const { request } = fixture(t);
+  const realAud = "a".repeat(64);
+  const signed = await assertion({ aud: [realAud] });
+
+  let response = await request("/api/mailboxes", {}, {}, {});
+  assert.deepEqual(await response.json(), { error: "Web authentication is not configured", code: "access_not_configured" });
+
+  response = await request("/api/mailboxes", { "Cf-Access-Jwt-Assertion": signed }, {}, {});
+  assert.equal(response.status, 503);
+  assert.deepEqual((await response.json()).hint, { team_domain: issuer, aud: realAud });
+
+  response = await request("/api/mailboxes");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).code, "access_missing");
+
+  response = await request("/api/mailboxes", { "Cf-Access-Jwt-Assertion": signed });
+  assert.equal(response.status, 401);
+  const invalid = await response.json();
+  assert.equal(invalid.code, "access_invalid");
+  assert.deepEqual(invalid.hint, { team_domain: issuer, aud: realAud });
+
+  for (const claims of [{ iss: "https://evil.example" }, { aud: ["not-an-aud"] }]) {
+    response = await request("/api/mailboxes", { "Cf-Access-Jwt-Assertion": await assertion(claims) }, {}, {});
+    assert.equal((await response.json()).hint, undefined, JSON.stringify(claims));
+  }
+  response = await request("/api/mailboxes", { "Cf-Access-Jwt-Assertion": "not-a-jwt" }, {}, {});
+  assert.equal((await response.json()).hint, undefined);
+});
+
 test("JWKS outages deny access without running a handler", async (t) => {
   const { request, calls } = fixture(t);
   t.mock.method(globalThis, "fetch", async () => { throw new TypeError("network unavailable"); });

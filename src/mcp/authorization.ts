@@ -4,7 +4,7 @@ import {
   type ClientInfo,
   type OAuthHelpers,
 } from "@cloudflare/workers-oauth-provider";
-import { AccessAuthError, verifyAccessRequest, type AccessEnv } from "./access.ts";
+import { verifyWebAccess, type WebAccessEnv } from "../worker/api/access.ts";
 import {
   MCP_READ_SCOPE,
   MCP_SCOPES,
@@ -18,10 +18,9 @@ import {
   parseAuthorizationSubmission,
 } from "./authorization-security.ts";
 
-export interface AuthorizationEnv extends AccessEnv {
+export interface AuthorizationEnv extends WebAccessEnv {
   DB: D1Database;
   OAUTH_PROVIDER: OAuthHelpers;
-  MCP_HOSTNAME?: string;
 }
 
 const MAX_FORM_BYTES = 4096;
@@ -39,14 +38,12 @@ export const authorizationHandler: ExportedHandler<AuthorizationEnv> = {
       });
     }
 
-    let identity: Awaited<ReturnType<typeof verifyAccessRequest>>;
-    try {
-      identity = await verifyAccessRequest(request, env);
-    } catch (error) {
-      const status = error instanceof AccessAuthError ? error.status : 403;
-      const message = error instanceof AccessAuthError ? error.message : "Unauthorized";
-      return htmlPage("Authorization unavailable", `<p>${escapeHtml(message)}</p>`, status);
+    // /authorize is covered by the same Access application as the web app.
+    const access = await verifyWebAccess(request.headers.get("Cf-Access-Jwt-Assertion"), env);
+    if (!access.ok) {
+      return htmlPage("Authorization unavailable", `<p>${escapeHtml(access.error)}</p>`, access.status);
     }
+    const { identity } = access;
 
     let oauthRequest: AuthRequest;
     try {
@@ -75,7 +72,7 @@ export const authorizationHandler: ExportedHandler<AuthorizationEnv> = {
       return consentPage(oauthRequest, client, identity.email, transactionToken);
     }
 
-    const expectedOrigin = `https://${env.MCP_HOSTNAME ?? "mcp.example.com"}`;
+    const expectedOrigin = url.origin;
     let submission: Awaited<ReturnType<typeof parseAuthorizationSubmission>>;
     try {
       submission = await parseAuthorizationSubmission(request, {

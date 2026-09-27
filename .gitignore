@@ -9,6 +9,6 @@ dist/
 *.tsbuildinfo
 .lody/
 
-# The MCP Worker config contains owner-specific values (Access AUD, allowed
-# emails, hostnames). Copy wrangler.mcp.example.jsonc and fill in your own.
+# Legacy config of the former separate MCP Worker. It holds owner-specific
+# values; keep it out of Git until the old Worker is deleted.
 wrangler.mcp.jsonc

@@ -18,7 +18,7 @@ const AUTH_REQUEST = {
   state: "client-state",
   codeChallenge: "pkce-challenge",
   codeChallengeMethod: "S256",
-  resource: ["https://mcp.example.com/v1"],
+  resource: ["https://mcp.example.com/mcp"],
   issuer: "https://mcp.example.com",
 };
 
@@ -125,7 +125,7 @@ test("request snapshots bind all values used to complete authorization", () => {
     scope: ["inbox.read", "inbox.send"],
     codeChallenge: "pkce-challenge",
     codeChallengeMethod: "S256",
-    resource: ["https://mcp.example.com/v1"],
+    resource: ["https://mcp.example.com/mcp"],
     issuer: "https://mcp.example.com",
   });
 });

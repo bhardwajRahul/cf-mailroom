@@ -24,10 +24,11 @@ Runs entirely on Cloudflare: Workers, Email Routing, D1, R2, and Web Push.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wong2/cf-mailroom)
 
-Deploy the web app into your own Cloudflare account, with storage and drafting
+Deploy Mailroom into your own Cloudflare account, with storage and drafting
 queues provisioned for you and database migrations applied automatically.
-Then protect it with Cloudflare Access and connect your email domain.
-The MCP server and browser notifications are optional, separate setup steps.
+Then open the app: its setup screen walks you through turning on Cloudflare
+Access. After that, connect your email domain. The MCP server ships in the same
+Worker; browser notifications are optional.
 
 **Start here: [Cloudflare deployment guide](docs/deployment.md).** You need a
 domain on Cloudflare, R2 enabled, and Workers Paid for outbound email. The
@@ -41,8 +42,8 @@ inbound email ──► Email Routing ──► email() handler ──► D1 + R
                                               Queue ──► Draft Run ──► Agent Draft
                                                           │
 web UI (React SPA) ──► /api (Hono) ───────────────────────┤
-external agents ──► OAuth 2.1 ──► MCP 2026-07-28 ────────┤
-                              └─ /authorize ──► Access (owner only)
+external agents ──► OAuth 2.1 ──► /mcp (MCP 2026-07-28) ─┤
+                              └─ /authorize ──► Access (same app as web UI)
 outbound Reply Attempt ──► Cloudflare Email Sending ──────┤
 outbound Send Attempt ──► Cloudflare Email Sending ───────┘
 new inbound Message ──► Web Push ──► subscribed browsers
@@ -140,9 +141,9 @@ not `npx wrangler dev`: the test always targets port 5173 and `wrangler.dev.json
 Search and conversation filters are URL parameters (`?q=...&filter=unread|drafts`),
 so refresh, browser history, and shared links preserve the current view.
 
-> **Security note**: protect the web hostname with [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
-> and configure `WEB_ACCESS_TEAM_DOMAIN` and `WEB_ACCESS_AUD` as described in
-> [deployment setup](docs/deployment.md#2-protect-the-web-app-before-adding-email).
+> **Security note**: protect the Worker with [Cloudflare Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
+> and configure `WEB_ACCESS_TEAM_DOMAIN` and `WEB_ACCESS_AUD`; the app's setup
+> screen shows both values (see [deployment setup](docs/deployment.md#2-protect-the-web-app-before-adding-email)).
 > The production API independently verifies Access JWTs and rejects requests
 > when authentication is missing or misconfigured. Writes also require an exact
 > same-origin `Origin` header. Local development uses a separate entrypoint.
@@ -154,11 +155,10 @@ switch off removes all stored subscriptions.
 
 ## MCP server
 
-The MCP server is a separate Worker on its own hostname (e.g.
-`https://mcp.example.com/v1`). It
-shares D1, Cloudflare Email Sending, and the R2 bucket (for outbound attachment
-staging) with the Web Worker, but has no access to the Web API, assets, AI
-binding, queues, or Push secrets.
+The MCP server runs in the same Worker as the web app, at
+`https://<your-hostname>/mcp`. It calls the Inbox domain modules directly and
+does not proxy or expose the Web API. The server URL is shown in
+**Settings → General**.
 
 It uses the stateless MCP `2026-07-28` handler and keeps compatibility with
 published 2025 stateless clients. Its tools are:
@@ -182,17 +182,16 @@ clients do not need their callback URLs preconfigured. Authorization Code uses
 S256 PKCE; access tokens last 15 minutes and refresh tokens last 30 days.
 
 Tokens have real `inbox.read` and `inbox.send` scopes. Read access is required;
-the two write tools are registered only when the token includes `inbox.send`
-and the instance-level emergency switch `MCP_SEND_ENABLED=true`. Set that
-variable to `false` to remove write tools from every client immediately.
+the two write tools are registered only when the token includes `inbox.send`,
+and the instance-level emergency switch `MCP_SEND_ENABLED` is not `false`. Set
+that variable to `false` to remove write tools from every client immediately.
 
-### Deploy the MCP server
+### Enable the MCP server
 
-Setup lives in the deployment guide: [connect an AI agent over
-MCP](docs/deployment.md#optional-connect-an-ai-agent-over-mcp). The MCP Worker
-is configured in `wrangler.mcp.jsonc` (gitignored), protected by a separate
-Access application that covers **only `/authorize`**, and deployed manually
-with `npm run deploy:mcp`.
+MCP is deployed with the app. Access protects the whole Worker, so MCP clients
+need a Bypass application for `/mcp`, `/oauth`, and `/.well-known`; the consent
+page at `/authorize` stays behind the same Access application as the web UI.
+See [connect an AI agent over MCP](docs/deployment.md#optional-connect-an-ai-agent-over-mcp).
 
 ## Roadmap
 

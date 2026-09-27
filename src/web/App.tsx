@@ -10,6 +10,7 @@ import {
   useSearchParams,
 } from "react-router";
 import {
+  accessSetupError,
   fetchLabels,
   fetchMailboxes,
   fetchThreads,
@@ -17,6 +18,7 @@ import {
   THREAD_PAGE_SIZE,
   type ThreadCursor,
 } from "./api";
+import { AccessSetup } from "./components/AccessSetup";
 import { AgentSettings } from "./components/AgentSettings";
 import { GeneralSettings } from "./components/GeneralSettings";
 import { ComposeEmailProvider, useCompose } from "./components/ComposeEmail";
@@ -88,7 +90,11 @@ function Workspace(props: {
   const isMailView = props.view !== "settings";
   const autoSelected = (location.state as { autoSelected?: boolean } | null)?.autoSelected === true;
 
-  const mailboxes = useQuery({ queryKey: ["mailboxes"], queryFn: fetchMailboxes });
+  const mailboxes = useQuery({
+    queryKey: ["mailboxes"],
+    queryFn: fetchMailboxes,
+    retry: (failureCount, error) => !accessSetupError(error) && failureCount < 3,
+  });
   const labels = useQuery({ queryKey: ["labels"], queryFn: () => fetchLabels() });
   const threadQuery = {
     mailboxId: selectedMailbox,
@@ -221,6 +227,17 @@ function Workspace(props: {
     filter === "all" &&
     activeLabel === null &&
     threadRows.length === 0;
+
+  const setupError = accessSetupError(mailboxes.error);
+  if (setupError) {
+    return (
+      <AccessSetup
+        error={setupError}
+        onRetry={() => window.location.reload()}
+        retrying={mailboxes.isFetching}
+      />
+    );
+  }
 
   return (
     <div className="flex h-dvh min-h-[560px] overflow-hidden bg-background text-foreground">

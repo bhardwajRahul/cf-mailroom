@@ -13,6 +13,7 @@ import {
   unsubscribeCurrentBrowser,
 } from "../push-notifications";
 import { BellIcon } from "./Icons";
+import { McpSettings } from "./McpSettings";
 import {
   SettingsBlock,
   SettingsHeader,
@@ -140,6 +141,8 @@ export function GeneralSettings(props: {
             </div>
           </SettingsPanel>
         </SettingsBlock>
+
+        <McpSettings />
       </SettingsPage>
     </div>
   );

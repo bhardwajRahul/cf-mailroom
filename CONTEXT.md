@@ -49,11 +49,11 @@ A durable intent to send one new outbound Message from a registered Inbox. It ow
 _Avoid_: API send, raw Cloudflare send
 
 **MCP Server**:
-The independently deployed, OAuth-protected adapter through which external agents read Conversations and send email. It shares the Inbox domain modules and D1 database with the Web Worker but does not proxy or expose the Web API.
+The OAuth-protected adapter at `/mcp` through which external agents read Conversations and send email. It runs in the same Worker as the web app and calls the Inbox domain modules directly, but does not proxy or expose the Web API.
 _Avoid_: MCP API, agent endpoint
 
 **Access Identity**:
-The instance owner identity verified from the Cloudflare Access assertion and owner allowlist when an MCP client opens `/authorize`. Access protects only interactive consent; OAuth discovery, registration, tokens, and the MCP resource remain publicly reachable. The owner subject is encrypted into the resulting grant and recorded on MCP-originated Reply and Send Attempts, while bearer tokens are never logged.
+The owner identity verified from the Cloudflare Access assertion when an MCP client opens `/authorize`, using the same Access application as the web app. A Bypass application keeps OAuth discovery, registration, tokens, and the MCP resource publicly reachable; interactive consent stays behind Access. The owner subject is encrypted into the resulting grant and recorded on MCP-originated Reply and Send Attempts, while bearer tokens are never logged.
 _Avoid_: MCP user, API key owner
 
 **MCP Authorization Grant**:

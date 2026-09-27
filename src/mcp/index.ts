@@ -13,23 +13,21 @@ import {
 } from "./route.ts";
 import { createMailroomServer, type McpEnv } from "./server.ts";
 
-interface Env extends McpEnv, AuthorizationEnv {
+export interface McpWorkerEnv extends McpEnv, AuthorizationEnv {
   OAUTH_KV: KVNamespace;
   OAUTH_PROVIDER: OAuthHelpers;
   MCP_SEND_ENABLED?: string;
 }
 
-const DEFAULT_MCP_HOSTNAME = "mcp.example.com";
+type WebHandler = {
+  fetch(request: Request, env: McpWorkerEnv, ctx: ExecutionContext): Response | Promise<Response>;
+};
 
-function mcpOrigin(env: { MCP_HOSTNAME?: string }): string {
-  return `https://${env.MCP_HOSTNAME ?? DEFAULT_MCP_HOSTNAME}`;
-}
-
-class McpApiHandler extends WorkerEntrypoint<Env, OAuthGrantProps> {
+class McpApiHandler extends WorkerEntrypoint<McpWorkerEnv, OAuthGrantProps> {
   async fetch(request: Request): Promise<Response> {
     const authorization = request.headers.get("Authorization");
     const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
-    const origin = mcpOrigin(this.env);
+    const origin = new URL(request.url).origin;
     const summary = token
       ? await this.env.OAUTH_PROVIDER.unwrapToken<OAuthGrantProps>(token)
       : null;
@@ -61,11 +59,11 @@ class McpApiHandler extends WorkerEntrypoint<Env, OAuthGrantProps> {
       clientId: summary.grant.clientId,
       canSend:
         summary.scope.includes(MCP_SEND_SCOPE) &&
-        this.env.MCP_SEND_ENABLED === "true",
+        this.env.MCP_SEND_ENABLED !== "false",
     };
     const hostname = new URL(origin).hostname;
     const handler = createMcpHandler(
-      () => createMailroomServer(this.env, identity),
+      () => createMailroomServer({ ...this.env, WEB_APP_URL: origin }, identity),
       {
         route: MCP_ROUTE,
         allowedHostnames: [hostname],
@@ -114,7 +112,7 @@ function oauthError(
     'Bearer realm="Mailroom"',
     `error="${error}"`,
     `error_description="${description}"`,
-    `resource_metadata="${origin}/.well-known/oauth-protected-resource/v1"`,
+    `resource_metadata="${origin}/.well-known/oauth-protected-resource${MCP_ROUTE}"`,
     ...(scope ? [`scope="${scope}"`] : []),
   ].join(", ");
   return Response.json(
@@ -129,23 +127,34 @@ function oauthError(
   );
 }
 
-let oauthProvider: OAuthProvider<Env> | undefined;
+// The Worker can be reached on workers.dev and custom domains. Each origin is
+// its own issuer and resource, so tokens stay bound to the hostname that issued them.
+const oauthProviders = new Map<string, OAuthProvider<McpWorkerEnv>>();
 
-function getOAuthProvider(env: Env): OAuthProvider<Env> {
-  if (oauthProvider) return oauthProvider;
-  const origin = mcpOrigin(env);
-  oauthProvider = new OAuthProvider<Env>({
+function getOAuthProvider(origin: string, web: WebHandler): OAuthProvider<McpWorkerEnv> {
+  const existing = oauthProviders.get(origin);
+  if (existing) return existing;
+  const oauthProvider = new OAuthProvider<McpWorkerEnv>({
   apiRoute: MCP_ROUTE,
   apiHandler: McpApiHandler,
-  defaultHandler: authorizationHandler,
+  defaultHandler: {
+    fetch(request, env, ctx) {
+      return new URL(request.url).pathname === "/authorize"
+        ? authorizationHandler.fetch!(request as Request<unknown, IncomingRequestCfProperties>, env, ctx)
+        : web.fetch(request, env, ctx);
+    },
+  } satisfies ExportedHandler<McpWorkerEnv>,
   authorizeEndpoint: "/authorize",
   tokenEndpoint: "/oauth/token",
   clientRegistrationEndpoint: "/oauth/register",
   clientIdMetadataDocumentEnabled: true,
   scopesSupported: [MCP_READ_SCOPE, MCP_SEND_SCOPE],
   resourceMetadata: {
-    resource: `${origin}${MCP_ROUTE}`,
-    authorization_servers: [origin],
+    // Production origins are always HTTPS. Local http://localhost dev derives
+    // these per request because the provider only accepts HTTPS issuers.
+    ...(origin.startsWith("https://")
+      ? { resource: `${origin}${MCP_ROUTE}`, authorization_servers: [origin] }
+      : {}),
     scopes_supported: [MCP_READ_SCOPE, MCP_SEND_SCOPE],
     bearer_methods_supported: ["header"],
     resource_name: "Mailroom",
@@ -173,16 +182,20 @@ function getOAuthProvider(env: Env): OAuthProvider<Env> {
     });
   },
   });
+  oauthProviders.set(origin, oauthProvider);
   return oauthProvider;
 }
 
-const worker: ExportedHandler<Env> = {
-  fetch(request, env, ctx) {
-    if (isRejectedMcpRouteLookalike(new URL(request.url).pathname)) {
+/**
+ * Serve MCP (`/mcp`), its OAuth endpoints, and owner consent (`/authorize`)
+ * from the same Worker as the web app. Everything else goes to `web`.
+ */
+export function withMcp(web: WebHandler) {
+  return (request: Request, env: Omit<McpWorkerEnv, "OAUTH_PROVIDER">, ctx: ExecutionContext) => {
+    const url = new URL(request.url);
+    if (isRejectedMcpRouteLookalike(url.pathname)) {
       return new Response("Not found", { status: 404 });
     }
-    return getOAuthProvider(env).fetch(request, env, ctx);
-  },
-};
-
-export default worker;
+    return getOAuthProvider(url.origin, web).fetch(request, env as McpWorkerEnv, ctx);
+  };
+}

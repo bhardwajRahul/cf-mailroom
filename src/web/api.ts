@@ -13,17 +13,43 @@ import type {
   ThreadDetail,
 } from "../shared/types";
 
+export interface AccessHint {
+  team_domain: string;
+  aud: string;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly hint?: AccessHint,
+  ) {
+    super(message);
+  }
+}
+
+const ACCESS_SETUP_CODES = ["access_not_configured", "access_missing", "access_invalid"];
+
+/** The API rejected the request because Cloudflare Access is not set up correctly. */
+export function accessSetupError(error: unknown): ApiError | null {
+  return error instanceof ApiError && error.code && ACCESS_SETUP_CODES.includes(error.code)
+    ? error
+    : null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init);
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
+    let body: { error?: string; code?: string; hint?: AccessHint } = {};
     try {
-      const body = (await res.json()) as { error?: string };
+      body = await res.json();
       if (body.error) message = body.error;
     } catch {
       // Keep the status-based fallback for non-JSON responses.
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status, body.code, body.hint);
   }
   return res.json() as Promise<T>;
 }

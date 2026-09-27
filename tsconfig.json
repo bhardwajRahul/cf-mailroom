@@ -8,7 +8,6 @@
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.worker.json" },
-    { "path": "./tsconfig.mcp.json" }
+    { "path": "./tsconfig.worker.json" }
   ]
 }
