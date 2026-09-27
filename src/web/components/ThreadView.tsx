@@ -324,8 +324,8 @@ export function ThreadView(props: {
         </div>
       </div>
 
-      <footer className="shrink-0 bg-canvas px-4 pt-1 pb-3 sm:px-6 sm:pb-5">
-        <div className="mr-auto w-full max-w-[800px]">
+      <footer className="shrink-0 bg-canvas pt-1 pb-3 sm:pb-5">
+        <div className="mr-auto w-full max-w-[800px] px-4 sm:px-6">
           <Card className="gap-0 py-0 shadow-[0_1px_2px_oklch(0.2_0.012_265/0.04),0_4px_16px_-6px_oklch(0.2_0.012_265/0.08)] transition-shadow focus-within:ring-foreground/25">
             <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/70 py-1 pr-2 pl-3.5 text-xs text-muted-foreground">
               <span className="flex min-w-0 flex-1 basis-48 items-center gap-1.5 py-1">
