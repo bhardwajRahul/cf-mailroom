@@ -51,7 +51,8 @@ subject to Cloudflare's quotas and billing. This is not a promise of free hostin
    pre-fills `npm run build`, clearing it avoids building twice.
 5. Deploy and wait for Workers Builds to finish. The script builds the app,
    applies pending D1 migrations, then deploys the generated Worker and assets.
-   No VAPID secrets are required yet.
+   It automatically creates missing browser notification credentials; no manual
+   VAPID key generation is needed.
 
 Cloudflare's [Deploy to Cloudflare documentation](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
 describes resource provisioning and repository creation. One Worker serves the
@@ -174,18 +175,31 @@ Access identity per UTC day.
 
 ## Optional: browser notifications
 
-From your instance's cloned repository:
+In **Settings → General**, enable browser notifications and grant permission in
+each browser. No CLI or manual secret configuration is needed with the deployment
+button's default build token.
 
-```sh
-npm run vapid:generate
-npx wrangler secret put VAPID_PUBLIC_KEY --config wrangler.jsonc
-npx wrangler secret put VAPID_PRIVATE_JWK --config wrangler.jsonc
-npx wrangler secret put VAPID_SUBJECT --config wrangler.jsonc
-```
+The deploy script checks for `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_JWK`. If both
+are absent, it generates a P-256 key pair and uploads it as Worker Secrets with
+the code using `wrangler deploy --secrets-file`. Keys exist only in a restricted
+temporary file during deployment, which is removed afterward; they are never
+committed to Git or printed by the script. Existing keys are preserved across
+deploys so browser subscriptions continue to work. A failed lookup or an
+incomplete key pair stops deployment instead of replacing existing keys.
 
-Paste the matching generated keys at the prompts and use a subject such as
-`mailto:admin@example.com`. Keep the private key out of Git. In **Settings →
-General**, enable browser notifications and grant permission in each browser.
+An existing `VAPID_SUBJECT` Secret or Wrangler variable is also preserved.
+Otherwise, the script uses the deploying Cloudflare user's email as the Web Push
+contact (`mailto:…`). This contact is sent to browser push providers, not email
+recipients. Workers Builds' default token includes the required User Details
+read permission. For a custom token without access to a user email, or to choose
+a different contact, set `VAPID_SUBJECT` in the **build environment** to a
+`mailto:` address or HTTPS contact URL before the first deployment. The script
+copies it to a runtime Secret. To change an existing contact, update the runtime
+`VAPID_SUBJECT` in the Worker's Settings → Variables and Secrets.
+
+Run deployments for a given instance sequentially, especially its first deploy,
+so two initial builds cannot generate different key pairs simultaneously.
+`npm run vapid:generate` remains available for manual setup or local development.
 
 ## Updates
 

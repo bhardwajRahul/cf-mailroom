@@ -148,8 +148,10 @@ so refresh, browser history, and shared links preserve the current view.
 > when authentication is missing or misconfigured. Writes also require an exact
 > same-origin `Origin` header. Local development uses a separate entrypoint.
 
-Browser notifications are off by default. After configuring the VAPID secrets,
-turn them on under **Settings → General**. Every browser that should receive
+Browser notifications are off by default. Deployment automatically provisions
+VAPID keys and uses the deploying Cloudflare user's email as the push contact
+(an existing `VAPID_SUBJECT` is preserved). Turn notifications on under
+**Settings → General**. Every browser that should receive
 notifications must grant permission and subscribe once; turning the global
 switch off removes all stored subscriptions.
 
