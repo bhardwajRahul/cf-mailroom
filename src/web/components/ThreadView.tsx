@@ -46,6 +46,7 @@ export function ThreadView(props: {
   const [sendNotice, setSendNotice] = useState<string | null>(null);
   const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const [usedDraftId, setUsedDraftId] = useState<number | null>(null);
+  const seenDraftIds = useRef(new Set<number>());
   const markedRead = useRef<number | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +80,7 @@ export function ThreadView(props: {
     setSendNotice(null);
     setFailedAttemptKey(null);
     setUsedDraftId(null);
+    seenDraftIds.current.clear();
     attemptIds.current.clear();
   }, [props.threadId]);
 
@@ -125,10 +127,9 @@ export function ThreadView(props: {
   const discard = useMutation({
     mutationFn: (draftId: number) => discardDraft(draftId),
     onSuccess: (_result, draftId) => {
-      if (usedDraftId === draftId) {
-        setReplyText("");
-        setUsedDraftId(null);
-      }
+      seenDraftIds.current.add(draftId);
+      setReplyText("");
+      setUsedDraftId(null);
       invalidateAll();
     },
   });
@@ -151,6 +152,18 @@ export function ThreadView(props: {
     mutationFn: () => createDraft(props.threadId),
     onSuccess: invalidateAll,
   });
+
+  const draft = detail.data?.drafts.at(-1) ?? null;
+
+  useEffect(() => {
+    if (!draft || seenDraftIds.current.has(draft.id)) return;
+    // Consider each draft once: polling must not restore text the user cleared
+    // or replace a reply they were already writing when the draft arrived.
+    seenDraftIds.current.add(draft.id);
+    if (replyText.trim() || reply.isPending || discard.isPending) return;
+    setReplyText(draft.text_body);
+    setUsedDraftId(draft.id);
+  }, [draft, replyText, reply.isPending, discard.isPending]);
 
   if (detail.isLoading) return <ThreadViewSkeleton onBack={props.onBack} />;
 
@@ -192,7 +205,6 @@ export function ThreadView(props: {
     latestInboundIsAutomated: Boolean(thread.latest_inbound_is_auto_submitted),
     lastMessageDirection: thread.last_message_direction,
   });
-  const draft = drafts.at(-1) ?? null;
 
   const attemptFor = (key: string, text: string) => {
     const existing = attemptIds.current.get(key);
@@ -204,7 +216,7 @@ export function ThreadView(props: {
 
   const submitReply = () => {
     const text = replyText.trim();
-    if ((text || pendingFiles.length > 0) && !reply.isPending) {
+    if ((text || pendingFiles.length > 0) && !reply.isPending && !discard.isPending) {
       const fingerprint = `${text} ${pendingFiles.map((file) => `${file.name}:${file.size}`).join(",")}`;
       const attemptKey = usedDraftId === null ? "manual" : `draft-${usedDraftId}`;
       reply.mutate({
@@ -218,6 +230,7 @@ export function ThreadView(props: {
   };
 
   const applyDraft = (next: Draft) => {
+    seenDraftIds.current.add(next.id);
     setReplyText(next.text_body);
     setUsedDraftId(next.id);
   };
@@ -314,15 +327,17 @@ export function ThreadView(props: {
       <footer className="shrink-0 bg-canvas px-4 pt-1 pb-3 sm:px-6 sm:pb-5">
         <div className="mr-auto w-full max-w-[800px]">
           <Card className="gap-0 py-0 shadow-[0_1px_2px_oklch(0.2_0.012_265/0.04),0_4px_16px_-6px_oklch(0.2_0.012_265/0.08)] transition-shadow focus-within:ring-foreground/25">
-            <div className="flex min-h-9 min-w-0 items-center gap-1.5 border-b border-border/70 py-1 pr-2 pl-3.5 text-xs text-muted-foreground">
-              <span className="shrink-0">Replying from</span>
-              <span className="min-w-0 flex-1 truncate font-medium text-foreground/80">
-                {thread.mailbox_address}
+            <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/70 py-1 pr-2 pl-3.5 text-xs text-muted-foreground">
+              <span className="flex min-w-0 flex-1 basis-48 items-center gap-1.5 py-1">
+                <span className="shrink-0">Replying from</span>
+                <span className="truncate font-medium text-foreground/80" title={thread.mailbox_address}>
+                  {thread.mailbox_address}
+                </span>
               </span>
               <DraftAssist
                 status={agentStatus}
                 draft={draft}
-                usingDraft={usedDraftId !== null}
+                usingDraft={draft !== null && usedDraftId === draft.id}
                 error={
                   startDraft.isError && startDraft.error instanceof Error
                     ? startDraft.error.message
@@ -340,6 +355,7 @@ export function ThreadView(props: {
             </div>
             <Textarea
               value={replyText}
+              disabled={reply.isPending || discard.isPending}
               onChange={(event) => {
                 setReplyText(event.target.value);
                 if (!event.target.value.trim()) setUsedDraftId(null);
@@ -411,7 +427,7 @@ export function ThreadView(props: {
                 <Button
                   onClick={submitReply}
                   disabled={
-                    (!replyText.trim() && pendingFiles.length === 0) || reply.isPending
+                    (!replyText.trim() && pendingFiles.length === 0) || reply.isPending || discard.isPending
                   }
                 >
                   <SendIcon className="h-3.5 w-3.5" />
@@ -420,6 +436,11 @@ export function ThreadView(props: {
               </div>
             </div>
           </Card>
+          {discard.isError && (
+            <p role="alert" className="mt-2 text-xs leading-5 text-destructive">
+              Couldn’t discard the AI draft. Your text is still here. Try again.
+            </p>
+          )}
           {reply.isError && (
             <div
               role="alert"
@@ -577,26 +598,22 @@ function DraftAssist(props: {
       .filter(Boolean)
       .join("\n\n");
     return (
-      <span className="flex shrink-0 items-center gap-0.5">
-        {props.usingDraft ? (
-          <span className="flex items-center gap-1 px-1.5" title={context || undefined}>
-            <SparklesIcon className="h-3 w-3" />
-            Using AI draft
-          </span>
-        ) : (
-          <Button
-            variant="ghost"
-            size="xs"
-            className="text-foreground/80"
-            onClick={props.onUse}
-            disabled={props.busy || props.disabled}
-            title={context || undefined}
-          >
-            <SparklesIcon className="h-3 w-3" />
-            Use AI draft
-          </Button>
+      <span className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1 gap-y-0.5" title={context || undefined}>
+        <span role="status" className="flex shrink-0 items-center gap-1 font-medium text-foreground/80">
+          <SparklesIcon className="h-3 w-3" />
+          {props.usingDraft ? "AI draft" : "New AI draft"}
+        </span>
+        {props.usingDraft && props.draft.playbook_name && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="min-w-0 truncate" title={`Playbook: ${props.draft.playbook_name}`}>
+              Playbook: {props.draft.playbook_name}
+            </span>
+          </>
         )}
-        {action("Discard", props.onDiscard, "Discard AI draft")}
+        <span aria-hidden="true">·</span>
+        {!props.usingDraft && action("Replace", props.onUse, "Replace reply with AI draft")}
+        {action(props.busy ? "Discarding…" : "Discard", props.onDiscard, "Discard AI draft and clear reply")}
       </span>
     );
   }

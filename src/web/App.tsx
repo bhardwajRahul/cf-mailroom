@@ -316,6 +316,7 @@ function Workspace(props: {
           >
             {selectedThread !== null ? (
               <ThreadView
+                key={selectedThread}
                 threadId={selectedThread}
                 deferMarkRead={autoSelected}
                 onBack={() => navigate({ pathname: listPath, search: location.search })}
