@@ -80,8 +80,9 @@ request. Until that is configured, opening
 inbox; the API denies every request. Do this step before registering an Inbox
 or routing mail.
 
-1. In **Workers & Pages → your Worker → Access**, choose **Protect this Worker
-   behind Access**. Select **All traffic** and the **Cloudflare account** policy
+1. In [**Workers & Pages**](https://dash.cloudflare.com/?to=/:account/workers-and-pages)
+   **→ your Worker → Access**, select **Enable access** under **Worker
+   policies**. Choose **All traffic** and the **Cloudflare account** policy
    so only members of your account can sign in. Zero Trust must be enabled on
    the account (the free plan is enough). This protects every hostname of the
    Worker: `workers.dev`, custom domains, and previews.
@@ -142,7 +143,8 @@ endpoints, which Access blocks because it protects the whole Worker.
 1. Open **Settings → General** in Mailroom. The **AI agents (MCP)** card shows
    the server URL and checks whether the OAuth endpoints are publicly
    reachable.
-2. If it says Access blocks them, go to **Zero Trust → Access → Applications**
+2. If it says Access blocks them, go to
+   [**Zero Trust → Access → Applications**](https://dash.cloudflare.com/?to=/:account/one/access-controls/apps)
    and add a **Self-hosted** application with these public hostname
    destinations (use your own hostname, not a Worker destination), with a
    single **Bypass** policy for **Everyone**:

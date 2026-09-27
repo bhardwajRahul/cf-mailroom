@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { ApiError } from "../api";
+import { currentWorkerName, workerDashboardUrl } from "../cloudflare-dashboard";
 import { CopyField } from "./CopyField";
-import { ExternalLinkIcon } from "./Icons";
-
-const WORKERS_DASHBOARD = "https://dash.cloudflare.com/?to=/:account/workers-and-pages";
+import { DashLink } from "./DashLink";
 
 /** Shown instead of the workspace until Cloudflare Access protects this Worker. */
 export function AccessSetup(props: { error: ApiError; onRetry: () => void; retrying: boolean }) {
@@ -13,8 +12,7 @@ export function AccessSetup(props: { error: ApiError; onRetry: () => void; retry
   // means the visitor already signed in, so only the variables are left.
   const accessActive = Boolean(hint) || code === "access_invalid";
   const mismatch = code === "access_invalid";
-  const hostname = window.location.hostname;
-  const workerName = hostname.endsWith(".workers.dev") ? hostname.split(".")[0] : null;
+  const workerName = currentWorkerName();
 
   return (
     <div className="flex h-dvh min-h-[560px] justify-center overflow-y-auto bg-canvas px-4 py-10 text-foreground md:py-16">
@@ -28,12 +26,20 @@ export function AccessSetup(props: { error: ApiError; onRetry: () => void; retry
         <ol className="mt-8 space-y-3">
           <Step n={1} title="Put this Worker behind Access" state={accessActive ? "done" : "current"}>
             <p>
-              In the Cloudflare dashboard, open{" "}
-              <DashLink>Workers &amp; Pages</DashLink> →{" "}
-              <strong>{workerName ?? "your Mailroom Worker"}</strong> → <strong>Access</strong>, then
-              choose <strong>Protect this Worker behind Access</strong>. Select{" "}
-              <strong>All traffic</strong> and the <strong>Cloudflare account</strong> policy so only
-              members of your account can sign in.
+              {workerName ? (
+                <>
+                  Open the <DashLink href={workerDashboardUrl("access")}>Access tab</DashLink> of the{" "}
+                  <strong>{workerName}</strong> Worker
+                </>
+              ) : (
+                <>
+                  Open <DashLink href={workerDashboardUrl("access")}>Workers &amp; Pages</DashLink> →
+                  your Mailroom Worker → <strong>Access</strong>
+                </>
+              )}
+              , and under <strong>Worker policies</strong> select <strong>Enable access</strong>.
+              Choose <strong>All traffic</strong> and the <strong>Cloudflare account</strong> policy
+              so only members of your account can sign in.
             </p>
             <p className="mt-2">
               Zero Trust must be enabled on the account (the free plan is enough). Reload this page
@@ -53,7 +59,9 @@ export function AccessSetup(props: { error: ApiError; onRetry: () => void; retry
               </p>
             )}
             <p>
-              In the Worker's <strong>Settings → Variables and Secrets</strong>, add these as{" "}
+              In the Worker's{" "}
+              <DashLink href={workerDashboardUrl("settings")}>Settings</DashLink> →{" "}
+              <strong>Variables and Secrets</strong>, add these as{" "}
               <strong>Text</strong> variables and deploy:
             </p>
             <div className="mt-3 space-y-2">
@@ -121,19 +129,5 @@ function Step(props: {
         </div>
       )}
     </li>
-  );
-}
-
-function DashLink(props: { children: ReactNode }) {
-  return (
-    <a
-      href={WORKERS_DASHBOARD}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-0.5 font-medium text-foreground underline underline-offset-2"
-    >
-      {props.children}
-      <ExternalLinkIcon className="h-3 w-3" />
-    </a>
   );
 }

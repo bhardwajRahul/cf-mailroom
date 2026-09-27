@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { ACCESS_APPLICATIONS_URL } from "../cloudflare-dashboard";
 import { CopyField } from "./CopyField";
+import { DashLink } from "./DashLink";
 import { SettingsBlock, SettingsPanel } from "./SettingsNavigation";
 
 /**
@@ -61,7 +63,8 @@ export function McpSettings() {
               <p className="font-medium text-foreground">One more step: let MCP clients through Access</p>
               <p className="mt-1">
                 Access currently blocks the OAuth endpoints MCP clients need. In{" "}
-                <strong>Zero Trust → Access → Applications</strong>, add a{" "}
+                <DashLink href={ACCESS_APPLICATIONS_URL}>Zero Trust → Access → Applications</DashLink>,
+                add a{" "}
                 <strong>Self-hosted</strong> application with these two public hostname
                 destinations and a single <strong>Bypass</strong> policy for{" "}
                 <strong>Everyone</strong>:
