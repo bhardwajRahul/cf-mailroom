@@ -1,4 +1,5 @@
 import type { Mailbox } from "../../shared/types";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArchiveIcon, InboxIcon, MailIcon, SettingsIcon } from "./Icons";
 import { SquarePen } from "lucide-react";
@@ -29,17 +30,7 @@ export function Sidebar(props: {
         </p>
       </div>
 
-      <div className="shrink-0 px-2 pb-3">
-        <SidebarItem
-          label="Compose"
-          icon={<SquarePen className="h-4 w-4" />}
-          unread={0}
-          active={false}
-          onClick={props.onCompose}
-        />
-      </div>
-
-      <nav aria-label="Mail" className="flex-1 overflow-y-auto px-2 pt-1 pb-4">
+      <nav aria-label="Mail" className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-4">
         <div className="space-y-px">
           <SidebarItem
             label="All inboxes"
@@ -76,7 +67,7 @@ export function Sidebar(props: {
         )}
       </nav>
 
-      <div className="border-t px-2 py-2">
+      <div className="shrink-0 space-y-2 border-t p-2">
         <SidebarItem
           label="Settings"
           icon={<SettingsIcon className="h-4 w-4" />}
@@ -84,6 +75,14 @@ export function Sidebar(props: {
           active={props.activeView === "settings"}
           onClick={props.onOpenSettings}
         />
+        <Button
+          type="button"
+          onClick={props.onCompose}
+          className="h-10 w-full justify-start gap-2.5 px-2.5 text-[13px]"
+        >
+          <SquarePen className="h-4 w-4" aria-hidden="true" />
+          Compose
+        </Button>
       </div>
     </aside>
   );
