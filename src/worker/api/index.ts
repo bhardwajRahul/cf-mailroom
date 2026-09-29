@@ -129,10 +129,12 @@ api.get("/mailboxes", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT m.*,
        (SELECT COUNT(*) FROM threads t
-        WHERE t.mailbox_id = m.id AND t.is_read = 0 AND t.status != 'archived') AS unread_count
+        WHERE t.mailbox_id = m.id AND t.is_read = 0 AND t.status != 'archived') AS unread_count,
+       EXISTS (SELECT 1 FROM threads t JOIN messages msg ON msg.thread_id = t.id
+        WHERE t.mailbox_id = m.id AND msg.direction = 'inbound') AS has_received
      FROM mailboxes m ORDER BY m.address`,
-  ).all();
-  return c.json(results);
+  ).all<Omit<Mailbox, "has_received"> & { has_received: number }>();
+  return c.json(results.map((row) => ({ ...row, has_received: row.has_received === 1 })));
 });
 
 api.get("/domains", async (c) => {
@@ -228,7 +230,7 @@ api.post("/mailboxes", async (c) => {
     throw error;
   }
 
-  return c.json({ ...mailbox!, unread_count: 0 }, 201);
+  return c.json({ ...mailbox!, unread_count: 0, has_received: false }, 201);
 });
 
 api.patch("/mailboxes/:id", async (c) => {

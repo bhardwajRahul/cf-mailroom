@@ -5,6 +5,8 @@ export interface Mailbox {
   agent_mode: "off" | "draft" | "auto";
   agent_instructions: string | null;
   unread_count: number;
+  /** True once any inbound message has arrived, i.e. routing is known to work. */
+  has_received: boolean;
 }
 
 export interface Domain {

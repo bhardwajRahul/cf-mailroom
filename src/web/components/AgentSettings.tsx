@@ -353,15 +353,21 @@ export function AgentSettings(props: {
 
         {mailbox ? (
           <>
-            <SettingsBlock
-              id="email-routing-heading"
-              title="Email routing"
-              description="Use one Catch-all rule for the domain, or route individual inbox addresses to Mailroom."
-            >
-              <Button variant="outline" onClick={() => setRoutingAddress(mailbox.address)}>
-                Set up email routing
-              </Button>
-            </SettingsBlock>
+            {!mailbox.has_received && (
+              <SettingsBlock
+                id="email-routing-heading"
+                title="Email routing"
+                description="No mail has arrived yet. Make sure Email Routing sends this address to Mailroom, then send a test email."
+              >
+                <Button
+                  variant="link"
+                  className="h-auto p-0 underline decoration-muted-foreground/50 hover:decoration-current"
+                  onClick={() => setRoutingAddress(mailbox.address)}
+                >
+                  View setup steps
+                </Button>
+              </SettingsBlock>
+            )}
 
             <SettingsBlock id="agent-drafting-heading" title="AI drafting">
               <SettingsPanel>
@@ -805,8 +811,8 @@ export function AgentSettings(props: {
           <DialogHeader>
             <DialogTitle>Set up email routing</DialogTitle>
             <DialogDescription>
-              This inbox is saved. If Catch-all or a rule for this address already sends mail to
-              this Mailroom Worker, you can skip setup and send a test email.
+              If Catch-all or a rule for this address already sends mail to this Mailroom Worker,
+              there’s nothing more to do.
             </DialogDescription>
           </DialogHeader>
           <div>
