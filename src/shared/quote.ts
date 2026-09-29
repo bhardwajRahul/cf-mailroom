@@ -1,3 +1,7 @@
+export function isReplyAttribution(text: string): boolean {
+  return /^On\s+.{4,}\s+w(?:rote|rites):$/i.test(text.replace(/\s+/g, " ").trim());
+}
+
 /**
  * Split a plain-text email body into the newly written part and the quoted
  * tail (the "On ... wrote:" block most clients append). Used by the UI for
@@ -7,12 +11,12 @@
 export function splitQuotedTail(body: string): { main: string; quoted: string | null } {
   const lines = body.split("\n");
   const attributionRe =
-    /^(On .{4,80}(wrote|writes):\s*$|-{3,}\s*Original Message\s*-{3,}|________________________________)/i;
+    /^(-{3,}\s*Original Message\s*-{3,}|________________________________)/i;
 
   let cut = -1;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (attributionRe.test(line)) {
+    if (isReplyAttribution(line) || attributionRe.test(line)) {
       cut = i;
       break;
     }

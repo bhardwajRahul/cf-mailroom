@@ -35,7 +35,9 @@ export function EmailHtmlBody({
 
     const resize = () => {
       const measuredHeight = Math.max(
-        document.documentElement.scrollHeight,
+        // The root scrollHeight is at least the current frame height, which
+        // prevents the frame from shrinking when quoted history is closed.
+        document.body?.getBoundingClientRect().height ?? 0,
         document.body?.scrollHeight ?? 0,
         MIN_EMAIL_HEIGHT,
       );

@@ -1,4 +1,5 @@
 import type { Attachment } from "../shared/types";
+import { collapseEmailQuotes } from "./email-quotes";
 
 const BLOCKED_ELEMENTS = [
   "script",
@@ -20,6 +21,7 @@ const DOCUMENT_STYLE = `
   :root { color-scheme: only light; }
   html { background: #fff; }
   body {
+    display: flow-root;
     box-sizing: border-box;
     margin: 0;
     min-width: 0 !important;
@@ -33,6 +35,22 @@ const DOCUMENT_STYLE = `
   table { max-width: 100% !important; }
   img { max-width: 100% !important; height: auto; }
   a { overflow-wrap: anywhere; }
+  details.mailroom-quoted-text { margin: 12px 0 0; }
+  details.mailroom-quoted-text > summary {
+    width: fit-content;
+    padding: 4px 0;
+    color: #626775;
+    font: 12px/20px Arial, Helvetica, sans-serif;
+    cursor: pointer;
+  }
+  details.mailroom-quoted-text > summary:hover { color: #172033; }
+  details.mailroom-quoted-text > summary:focus-visible {
+    outline: 2px solid #626775;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  details.mailroom-quoted-text:not([open]) > summary > .mailroom-hide-quote,
+  details.mailroom-quoted-text[open] > summary > .mailroom-show-quote { display: none; }
 `;
 
 const CONTENT_SECURITY_POLICY = [
@@ -100,6 +118,8 @@ export function buildEmailHtmlDocument(html: string, attachments: Attachment[]):
     link.setAttribute("rel", "noopener noreferrer");
     link.removeAttribute("download");
   }
+
+  collapseEmailQuotes(document);
 
   const csp = document.createElement("meta");
   csp.httpEquiv = "Content-Security-Policy";
