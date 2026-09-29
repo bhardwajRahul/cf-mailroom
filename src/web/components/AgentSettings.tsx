@@ -726,7 +726,7 @@ export function AgentSettings(props: {
                         htmlFor="confirm-email-sending"
                         className="cursor-pointer text-sm font-medium"
                       >
-                        Configure outbound sending
+                        Email Sending is active
                       </label>
                       <p className="mt-1 text-sm leading-5 text-muted-foreground">
                         Onboard {inboxSetup.domainName} in Email Sending and wait for it to become active.
