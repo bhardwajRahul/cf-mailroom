@@ -112,6 +112,7 @@ export function AgentSettings(props: {
   const [inboxSetup, setInboxSetup] = useState<InboxSetupState | null>(null);
   const [routingConfirmed, setRoutingConfirmed] = useState(false);
   const [sendingConfirmed, setSendingConfirmed] = useState(false);
+  const [routingAddress, setRoutingAddress] = useState<string | null>(null);
   const [deleteInboxOpen, setDeleteInboxOpen] = useState(false);
   const [deleteInboxConfirmation, setDeleteInboxConfirmation] = useState("");
 
@@ -152,6 +153,7 @@ export function AgentSettings(props: {
       setMailboxEditorOpen(false);
       setMailboxAddress("");
       setInboxSetup(null);
+      setRoutingAddress(created.address);
       props.onSelectMailbox(created.id);
     },
   });
@@ -168,6 +170,7 @@ export function AgentSettings(props: {
       setMailboxEditorOpen(false);
       setMailboxAddress("");
       setInboxSetup(null);
+      setRoutingAddress(created.address);
       props.onSelectMailbox(created.id);
     },
   });
@@ -351,6 +354,16 @@ export function AgentSettings(props: {
 
         {mailbox ? (
           <>
+            <SettingsBlock
+              id="email-routing-heading"
+              title="Email routing"
+              description="Use one Catch-all rule for the domain, or route individual inbox addresses to Mailroom."
+            >
+              <Button variant="outline" onClick={() => setRoutingAddress(mailbox.address)}>
+                Set up email routing
+              </Button>
+            </SettingsBlock>
+
             <SettingsBlock id="agent-drafting-heading" title="AI drafting">
               <SettingsPanel>
                 <div className="flex items-start gap-4 px-4 py-4 sm:px-5">
@@ -574,6 +587,7 @@ export function AgentSettings(props: {
       <Dialog
         open={mailboxEditorOpen}
         onOpenChange={(open) => {
+          if (addMailbox.isPending || configureAndAddMailbox.isPending) return;
           setMailboxEditorOpen(open);
           if (!open) {
             addMailbox.reset();
@@ -585,7 +599,10 @@ export function AgentSettings(props: {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          showCloseButton={!addMailbox.isPending && !configureAndAddMailbox.isPending}
+          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
+        >
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -644,6 +661,7 @@ export function AgentSettings(props: {
                     type="button"
                     variant="ghost"
                     size="xs"
+                    disabled={configureAndAddMailbox.isPending}
                     onClick={() => {
                       configureAndAddMailbox.reset();
                       setInboxSetup(null);
@@ -674,9 +692,13 @@ export function AgentSettings(props: {
                         Email Routing is enabled
                       </label>
                       <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                        Email Routing is on for {inboxSetup.domainName}. After this inbox is saved, add a
-                        rule for {inboxSetup.address}: Send to a Worker → the Worker running this Mailroom.
-                        Unknown recipients are rejected, so add that rule only after the inbox exists.
+                        Enable Email Routing for <span className="break-all">{inboxSetup.domainName}</span>.
+                        For a root domain, we recommend Catch-all → Send to a Worker so future
+                        inboxes need no extra rules. We’ll show the steps after you save this inbox.
+                      </p>
+                      <p className="mt-2 text-sm leading-5 text-muted-foreground">
+                        Mailroom only accepts addresses you’ve added; all others are rejected.
+                        For a subdomain or selected addresses, use individual routing rules.
                       </p>
                       <Button asChild type="button" variant="outline" size="sm" className="mt-3">
                         <a
@@ -743,6 +765,7 @@ export function AgentSettings(props: {
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={addMailbox.isPending || configureAndAddMailbox.isPending}
                   onClick={() => setMailboxEditorOpen(false)}
                 >
                   Cancel
@@ -765,6 +788,66 @@ export function AgentSettings(props: {
               </div>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={routingAddress !== null}
+        onOpenChange={(open) => {
+          if (!open) setRoutingAddress(null);
+        }}
+      >
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set up email routing</DialogTitle>
+            <DialogDescription>
+              This inbox is saved. If Catch-all or a rule for this address already sends mail to
+              this Mailroom Worker, you can skip setup and send a test email.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <h3 className="text-sm font-medium">Catch-all (recommended for root domains)</h3>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              Configure it once, then add future inboxes in Mailroom without extra routing rules.
+            </p>
+          </div>
+          <ol className="list-decimal space-y-2 pl-5 text-sm leading-6">
+            <li>
+              Open Email Routing for <span className="break-all font-medium">{routingAddress?.split("@")[1]}</span> and
+              go to Routing rules.
+            </li>
+            <li>
+              Enable <span className="font-medium">Catch-all</span>.
+            </li>
+            <li>
+              Choose <span className="font-medium">Send to a Worker</span> and select the Worker running
+              this Mailroom, then save the rule.
+            </li>
+          </ol>
+          <p className="text-sm leading-5 text-muted-foreground">
+            Mailroom rejects addresses you haven’t added. Existing rules for specific addresses
+            take priority over Catch-all.
+          </p>
+          <details className="text-sm leading-6">
+            <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">
+              Route only this address, or use a subdomain
+            </summary>
+            <p className="mt-2 text-muted-foreground">
+              Catch-all is only available for root domains. To route this address individually,
+              add <span className="break-all font-medium text-foreground">{routingAddress}</span> as
+              a custom address in Routing rules. Choose Send to a Worker, select the Worker
+              running this Mailroom, and save.
+            </p>
+          </details>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoutingAddress(null)}>Close</Button>
+            <Button asChild>
+              <a href={CLOUDFLARE_EMAIL_ROUTING_URL} target="_blank" rel="noreferrer">
+                Open Email Routing
+                <ExternalLinkIcon />
+              </a>
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
