@@ -91,8 +91,6 @@ export function GeneralSettings(props: {
       />
 
       <SettingsPage>
-        <AiModelSettings saved={settings.data?.ai_model} />
-
         <SettingsBlock id="notification-settings-heading" title="Notifications">
           <SettingsPanel>
             <div className="flex items-start gap-4 px-4 py-4 sm:px-5">
@@ -149,6 +147,8 @@ export function GeneralSettings(props: {
           </SettingsPanel>
         </SettingsBlock>
 
+        <AiModelSettings saved={settings.data?.ai_model} />
+
         <McpSettings />
       </SettingsPage>
     </div>
@@ -171,11 +171,7 @@ function AiModelSettings(props: { saved: string | null | undefined }) {
   });
 
   return (
-    <SettingsBlock
-      id="ai-settings-heading"
-      title="AI"
-      description="The language model behind AI features across every inbox, such as writing and revising reply drafts."
-    >
+    <SettingsBlock id="ai-settings-heading" title="AI">
       <SettingsPanel>
         <form
           className="px-4 py-4 sm:px-5"
@@ -208,11 +204,10 @@ function AiModelSettings(props: { saved: string | null | undefined }) {
               {save.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
-          <p id="ai-model-help" className="mt-2 max-w-xl text-[13px] leading-5 text-muted-foreground">
-            Paste a text-generation model id from the{" "}
-            <DashLink href={AI_MODEL_CATALOG_URL}>Cloudflare model catalog</DashLink>. Leave
-            it empty to use <span className="font-mono text-[12.5px] text-foreground/80">{DEFAULT_AI_MODEL}</span>.
-          </p>
+          <div id="ai-model-help" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] leading-5 text-muted-foreground">
+            <span className="whitespace-nowrap">Leave empty for default.</span>
+            <DashLink href={AI_MODEL_CATALOG_URL}>Model catalog</DashLink>
+          </div>
           {save.isError && (
             <p role="alert" className="mt-2 text-xs leading-5 text-destructive">
               {save.error instanceof Error ? save.error.message : "Couldn’t save the model. Try again."}
@@ -220,7 +215,7 @@ function AiModelSettings(props: { saved: string | null | undefined }) {
           )}
           {save.isSuccess && !dirty && (
             <p role="status" className="mt-2 text-xs leading-5 text-muted-foreground">
-              Saved. AI features will now use {current.trim() || DEFAULT_AI_MODEL}.
+              Saved.
             </p>
           )}
         </form>
