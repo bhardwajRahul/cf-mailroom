@@ -600,7 +600,7 @@ export function AgentSettings(props: {
       >
         <DialogContent
           showCloseButton={!addMailbox.isPending && !configureAndAddMailbox.isPending}
-          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
+          className={`max-h-[calc(100dvh-2rem)] overflow-y-auto ${inboxSetup ? "sm:max-w-[40rem]" : "sm:max-w-md"}`}
         >
           <form
             onSubmit={(event) => {
