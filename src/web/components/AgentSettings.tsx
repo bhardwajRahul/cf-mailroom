@@ -170,7 +170,6 @@ export function AgentSettings(props: {
       setMailboxEditorOpen(false);
       setMailboxAddress("");
       setInboxSetup(null);
-      setRoutingAddress(created.address);
       props.onSelectMailbox(created.id);
     },
   });
@@ -673,77 +672,78 @@ export function AgentSettings(props: {
                   </Button>
                 </div>
 
-                <fieldset className="divide-y">
-                  <legend className="sr-only">Cloudflare setup checklist</legend>
-                  <div className="flex items-start gap-3 py-4">
-                    <Checkbox
-                      id="confirm-email-routing"
-                      checked={routingConfirmed}
-                      onCheckedChange={(checked) => setRoutingConfirmed(checked === true)}
-                      aria-labelledby="email-routing-title"
-                      className="mt-1"
-                    />
+                <p className="pt-4 text-sm leading-5 text-muted-foreground">
+                  Finish these two steps in Cloudflare so this inbox can receive and send mail.
+                </p>
+
+                <ol className="divide-y">
+                  <li className="flex items-start gap-3 py-4">
+                    <SetupStepNumber number={1} done={routingConfirmed} />
                     <div className="min-w-0 flex-1">
-                      <label
-                        id="email-routing-title"
-                        htmlFor="confirm-email-routing"
-                        className="cursor-pointer text-sm font-medium"
-                      >
-                        Email Routing is enabled
-                      </label>
-                      <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                        Enable Email Routing for <span className="break-all">{inboxSetup.domainName}</span>.
-                        For a root domain, we recommend Catch-all → Send to a Worker so future
-                        inboxes need no extra rules. We’ll show the steps after you save this inbox.
-                      </p>
-                      <p className="mt-2 text-sm leading-5 text-muted-foreground">
-                        Mailroom only accepts addresses you’ve added; all others are rejected.
-                        For a subdomain or selected addresses, use individual routing rules.
-                      </p>
+                      <h3 className="text-sm font-medium">Route incoming mail to Mailroom</h3>
+                      <ol className="mt-2 list-decimal space-y-1 pl-4 text-sm leading-5 text-muted-foreground marker:text-muted-foreground/70">
+                        <li>
+                          Open Email Routing for{" "}
+                          <span className="break-words font-medium text-foreground">{inboxSetup.domainName}</span>{" "}
+                          and go to Routing rules.
+                        </li>
+                        <li>
+                          Enable <span className="font-medium text-foreground">Catch-all</span>. Mailroom
+                          still rejects addresses you haven’t added.
+                        </li>
+                        <li>
+                          Choose <span className="font-medium text-foreground">Send to a Worker</span>,
+                          select the Worker running this Mailroom, and save.
+                        </li>
+                      </ol>
+                      <details className="mt-2 text-sm leading-5">
+                        <summary className="cursor-pointer rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+                          Using a subdomain or only this address?
+                        </summary>
+                        <p className="mt-1 text-muted-foreground">
+                          Catch-all only works on root domains. Instead, add{" "}
+                          <span className="break-words font-medium text-foreground">{inboxSetup.address}</span>{" "}
+                          as a custom address and send it to the same Worker.
+                        </p>
+                      </details>
                       <Button asChild type="button" variant="outline" size="sm" className="mt-3">
-                        <a
-                          href={CLOUDFLARE_EMAIL_ROUTING_URL}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
+                        <a href={CLOUDFLARE_EMAIL_ROUTING_URL} target="_blank" rel="noreferrer">
                           Open Email Routing
                           <ExternalLinkIcon />
                         </a>
                       </Button>
+                      <SetupStepConfirm
+                        id="confirm-email-routing"
+                        checked={routingConfirmed}
+                        onCheckedChange={setRoutingConfirmed}
+                        label="I’ve set up routing"
+                      />
                     </div>
-                  </div>
-                  <div className="flex items-start gap-3 py-4">
-                    <Checkbox
-                      id="confirm-email-sending"
-                      checked={sendingConfirmed}
-                      onCheckedChange={(checked) => setSendingConfirmed(checked === true)}
-                      aria-labelledby="email-sending-title"
-                      className="mt-1"
-                    />
+                  </li>
+                  <li className="flex items-start gap-3 py-4">
+                    <SetupStepNumber number={2} done={sendingConfirmed} />
                     <div className="min-w-0 flex-1">
-                      <label
-                        id="email-sending-title"
-                        htmlFor="confirm-email-sending"
-                        className="cursor-pointer text-sm font-medium"
-                      >
-                        Email Sending is active
-                      </label>
-                      <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                        Onboard {inboxSetup.domainName} in Email Sending and wait for it to become active.
+                      <h3 className="text-sm font-medium">Turn on sending for this domain</h3>
+                      <p className="mt-2 text-sm leading-5 text-muted-foreground">
+                        In Email Sending, onboard{" "}
+                        <span className="break-words font-medium text-foreground">{inboxSetup.domainName}</span>{" "}
+                        and wait until its status is Active. This can take a few minutes.
                       </p>
                       <Button asChild type="button" variant="outline" size="sm" className="mt-3">
-                        <a
-                          href={CLOUDFLARE_EMAIL_SENDING_URL}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
+                        <a href={CLOUDFLARE_EMAIL_SENDING_URL} target="_blank" rel="noreferrer">
                           Open Email Sending
                           <ExternalLinkIcon />
                         </a>
                       </Button>
+                      <SetupStepConfirm
+                        id="confirm-email-sending"
+                        checked={sendingConfirmed}
+                        onCheckedChange={setSendingConfirmed}
+                        label="Sending is active"
+                      />
                     </div>
-                  </div>
-                </fieldset>
+                  </li>
+                </ol>
 
                 {configureAndAddMailbox.isError && (
                   <p className="text-sm text-destructive" role="alert">
@@ -758,7 +758,11 @@ export function AgentSettings(props: {
             <DialogFooter className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {inboxSetup && (
                 <p className="mr-auto text-xs text-muted-foreground" aria-live="polite">
-                  {2 - setupStepsRemaining} of 2 complete
+                  {setupStepsRemaining === 0
+                    ? "Ready to add"
+                    : setupStepsRemaining === 1
+                      ? "1 step left"
+                      : "2 steps left"}
                 </p>
               )}
               <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
@@ -834,7 +838,7 @@ export function AgentSettings(props: {
             </summary>
             <p className="mt-2 text-muted-foreground">
               Catch-all is only available for root domains. To route this address individually,
-              add <span className="break-all font-medium text-foreground">{routingAddress}</span> as
+              add <span className="break-words font-medium text-foreground">{routingAddress}</span> as
               a custom address in Routing rules. Choose Send to a Worker, select the Worker
               running this Mailroom, and save.
             </p>
@@ -1328,6 +1332,39 @@ function ListSkeleton() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function SetupStepNumber(props: { number: number; done: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`mt-px flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums transition-colors ${
+        props.done ? "bg-foreground text-background" : "border text-muted-foreground"
+      }`}
+    >
+      {props.number}
+    </span>
+  );
+}
+
+function SetupStepConfirm(props: {
+  id: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  label: string;
+}) {
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <Checkbox
+        id={props.id}
+        checked={props.checked}
+        onCheckedChange={(checked) => props.onCheckedChange(checked === true)}
+      />
+      <label htmlFor={props.id} className="cursor-pointer text-sm">
+        {props.label}
+      </label>
     </div>
   );
 }
