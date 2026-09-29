@@ -21,6 +21,8 @@ export interface GeneralSettings {
   browser_notifications_configured: boolean;
   push_subscription_count: number;
   vapid_public_key: string | null;
+  /** Custom language model for AI features; null uses DEFAULT_AI_MODEL. */
+  ai_model: string | null;
 }
 
 export interface BrowserPushSubscription {

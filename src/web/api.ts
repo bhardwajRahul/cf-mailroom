@@ -89,6 +89,13 @@ export async function composeEmail(input: {
 export const fetchGeneralSettings = () =>
   request<GeneralSettings>("/settings/general");
 
+export const updateAiModel = (aiModel: string | null) =>
+  request<{ ok: true; ai_model: string | null }>("/settings/general", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ai_model: aiModel }),
+  });
+
 export const enableBrowserNotifications = (subscription: BrowserPushSubscription) =>
   request<{ ok: true }>("/settings/browser-notifications", {
     method: "POST",

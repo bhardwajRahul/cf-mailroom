@@ -1,11 +1,16 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { AI_MODEL_CATALOG_URL, DEFAULT_AI_MODEL } from "../../shared/ai-model";
 import {
   disableBrowserNotifications,
   enableBrowserNotifications,
   fetchGeneralSettings,
+  updateAiModel,
 } from "../api";
+import { DashLink } from "./DashLink";
 import {
   BrowserPushError,
   createBrowserPushSubscription,
@@ -86,6 +91,8 @@ export function GeneralSettings(props: {
       />
 
       <SettingsPage>
+        <AiModelSettings saved={settings.data?.ai_model} />
+
         <SettingsBlock id="notification-settings-heading" title="Notifications">
           <SettingsPanel>
             <div className="flex items-start gap-4 px-4 py-4 sm:px-5">
@@ -145,6 +152,80 @@ export function GeneralSettings(props: {
         <McpSettings />
       </SettingsPage>
     </div>
+  );
+}
+
+function AiModelSettings(props: { saved: string | null | undefined }) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState<string | null>(null);
+  const saved = props.saved ?? "";
+  const current = value ?? saved;
+  const dirty = current.trim() !== saved;
+
+  const save = useMutation({
+    mutationFn: () => updateAiModel(current.trim() || null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["settings", "general"] });
+      setValue(null);
+    },
+  });
+
+  return (
+    <SettingsBlock
+      id="ai-settings-heading"
+      title="AI"
+      description="The language model behind AI features across every inbox, such as writing and revising reply drafts."
+    >
+      <SettingsPanel>
+        <form
+          className="px-4 py-4 sm:px-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (dirty) save.mutate();
+          }}
+        >
+          <label htmlFor="ai-model" className="text-[13.5px] font-medium text-foreground">
+            Language model
+          </label>
+          <div className="mt-2 flex max-w-xl gap-2">
+            <Input
+              id="ai-model"
+              value={current}
+              onChange={(event) => {
+                setValue(event.target.value);
+                save.reset();
+              }}
+              placeholder={DEFAULT_AI_MODEL}
+              disabled={props.saved === undefined || save.isPending}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoComplete="off"
+              aria-describedby="ai-model-help"
+              aria-invalid={save.isError || undefined}
+              className="font-mono text-[13px] md:text-[13px]"
+            />
+            <Button type="submit" variant="outline" disabled={!dirty || save.isPending}>
+              {save.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          <p id="ai-model-help" className="mt-2 max-w-xl text-[13px] leading-5 text-muted-foreground">
+            Paste a text-generation model id from the{" "}
+            <DashLink href={AI_MODEL_CATALOG_URL}>Cloudflare model catalog</DashLink>. Leave
+            it empty to use <span className="font-mono text-[12.5px] text-foreground/80">{DEFAULT_AI_MODEL}</span>.
+          </p>
+          {save.isError && (
+            <p role="alert" className="mt-2 text-xs leading-5 text-destructive">
+              {save.error instanceof Error ? save.error.message : "Couldn’t save the model. Try again."}
+            </p>
+          )}
+          {save.isSuccess && !dirty && (
+            <p role="status" className="mt-2 text-xs leading-5 text-muted-foreground">
+              Saved. AI features will now use {current.trim() || DEFAULT_AI_MODEL}.
+            </p>
+          )}
+        </form>
+      </SettingsPanel>
+    </SettingsBlock>
   );
 }
 

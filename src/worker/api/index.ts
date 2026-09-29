@@ -7,6 +7,7 @@ import {
   reviseDraft,
 } from "../agent/draft";
 import { enqueueDraftRun } from "../agent/runs";
+import { parseAiModel } from "../../shared/ai-model";
 import {
   AttachmentInputError,
   type OutboundAttachmentInput,
@@ -39,8 +40,8 @@ api.route("/compose", composeApi);
 api.get("/settings/general", async (c) => {
   const [settings, subscriptions] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT browser_notifications_enabled FROM global_settings WHERE id = 1",
-    ).first<{ browser_notifications_enabled: number }>(),
+      "SELECT browser_notifications_enabled, ai_model FROM global_settings WHERE id = 1",
+    ).first<{ browser_notifications_enabled: number; ai_model: string | null }>(),
     c.env.DB.prepare("SELECT COUNT(*) AS count FROM push_subscriptions")
       .first<{ count: number }>(),
   ]);
@@ -52,8 +53,24 @@ api.get("/settings/general", async (c) => {
     browser_notifications_configured: configured,
     push_subscription_count: Number(subscriptions?.count ?? 0),
     vapid_public_key: configured ? c.env.VAPID_PUBLIC_KEY! : null,
+    ai_model: settings?.ai_model ?? null,
   };
   return c.json(result);
+});
+
+api.patch("/settings/general", async (c) => {
+  const body = await c.req.json<{ ai_model?: unknown }>();
+  if (!("ai_model" in body)) return c.json({ error: "Nothing to update" }, 400);
+  const parsed = parseAiModel(body.ai_model);
+  if ("error" in parsed) return c.json({ error: parsed.error }, 400);
+  await c.env.DB.prepare(
+    `UPDATE global_settings
+     SET ai_model = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE id = 1`,
+  )
+    .bind(parsed.model)
+    .run();
+  return c.json({ ok: true, ai_model: parsed.model });
 });
 
 api.post("/settings/browser-notifications", async (c) => {

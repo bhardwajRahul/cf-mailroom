@@ -28,6 +28,10 @@ _Avoid_: Template, canned response, rule
 A per-Inbox named tag with a natural-language match condition. When a new inbound Message opens a Conversation, the `typesafe/jev` evaluation model checks every Label's condition and applies each match; replies in existing Conversations are never labeled. A Conversation can carry any number of Labels, and the conversation list can be filtered by Label.
 _Avoid_: Tag, category, folder
 
+**AI Model**:
+The workspace-wide Workers AI language model, entered by hand in General settings, that every text-generation AI feature calls through `getAiModel`. Label evaluation is separate: it needs the dedicated `typesafe/jev` classifier.
+_Avoid_: Draft model, agent model
+
 **Agent Draft**:
 A proposed reply authored by the agent and held for human review before sending.
 _Avoid_: Auto-reply, suggestion
