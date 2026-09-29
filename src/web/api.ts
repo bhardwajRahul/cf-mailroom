@@ -2,6 +2,7 @@ import type {
   BrowserPushSubscription,
   ComposeAttemptResult,
   Domain,
+  Draft,
   GeneralSettings,
   Label,
   LabelInput,
@@ -254,5 +255,9 @@ export const discardDraft = (id: number) => request(`/drafts/${id}/discard`, { m
 export const retryDraftRun = (id: number) =>
   request<{ ok: true }>(`/draft-runs/${id}/retry`, { method: "POST" });
 
-export const createDraft = (threadId: number) =>
-  request<{ ok: true; run_id: number }>(`/threads/${threadId}/draft`, { method: "POST" });
+export const reviseDraft = (threadId: number, instruction: string, currentText: string) =>
+  request<Draft>(`/threads/${threadId}/draft/revise`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instruction, current_text: currentText }),
+  });

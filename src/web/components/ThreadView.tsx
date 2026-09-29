@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   archiveThread,
-  createDraft,
   discardDraft,
   fetchThread,
   markRead,
   retryDraftRun,
+  reviseDraft,
   sendReply,
   unarchiveThread,
 } from "../api";
@@ -46,7 +46,12 @@ export function ThreadView(props: {
   const [sendNotice, setSendNotice] = useState<string | null>(null);
   const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const [usedDraftId, setUsedDraftId] = useState<number | null>(null);
+  const [instructionOpen, setInstructionOpen] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [undoState, setUndoState] = useState<{ text: string; draftId: number | null } | null>(null);
   const seenDraftIds = useRef(new Set<number>());
+  const instructionRef = useRef<HTMLInputElement>(null);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
   const markedRead = useRef<number | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +117,9 @@ export function ThreadView(props: {
         setReplyText("");
         setPendingFiles([]);
         setUsedDraftId(null);
+        setUndoState(null);
+        setInstructionOpen(false);
+        setInstruction("");
       }
       setFailedAttemptKey(null);
       setSendNotice(
@@ -130,8 +138,24 @@ export function ThreadView(props: {
       seenDraftIds.current.add(draftId);
       setReplyText("");
       setUsedDraftId(null);
+      setUndoState(null);
       invalidateAll();
     },
+  });
+
+  const revise = useMutation({
+    mutationFn: (args: { instruction: string; currentText: string; previousDraftId: number | null }) =>
+      reviseDraft(props.threadId, args.instruction, args.currentText),
+    onSuccess: (next, args) => {
+      // Mark it seen so polling does not treat the revision as a newly arrived draft.
+      seenDraftIds.current.add(next.id);
+      setUndoState({ text: args.currentText, draftId: args.previousDraftId });
+      setReplyText(next.text_body);
+      setUsedDraftId(next.id);
+      invalidateAll();
+    },
+    // The input is disabled while pending, so focus has to be put back for the next tweak.
+    onSettled: () => requestAnimationFrame(() => instructionRef.current?.focus()),
   });
 
   const moveThread = useMutation({
@@ -148,11 +172,6 @@ export function ThreadView(props: {
     onSuccess: invalidateAll,
   });
 
-  const startDraft = useMutation({
-    mutationFn: () => createDraft(props.threadId),
-    onSuccess: invalidateAll,
-  });
-
   const draft = detail.data?.drafts.at(-1) ?? null;
 
   useEffect(() => {
@@ -160,10 +179,10 @@ export function ThreadView(props: {
     // Consider each draft once: polling must not restore text the user cleared
     // or replace a reply they were already writing when the draft arrived.
     seenDraftIds.current.add(draft.id);
-    if (replyText.trim() || reply.isPending || discard.isPending) return;
+    if (replyText.trim() || reply.isPending || discard.isPending || revise.isPending) return;
     setReplyText(draft.text_body);
     setUsedDraftId(draft.id);
-  }, [draft, replyText, reply.isPending, discard.isPending]);
+  }, [draft, replyText, reply.isPending, discard.isPending, revise.isPending]);
 
   if (detail.isLoading) return <ThreadViewSkeleton onBack={props.onBack} />;
 
@@ -216,7 +235,7 @@ export function ThreadView(props: {
 
   const submitReply = () => {
     const text = replyText.trim();
-    if ((text || pendingFiles.length > 0) && !reply.isPending && !discard.isPending) {
+    if ((text || pendingFiles.length > 0) && !reply.isPending && !discard.isPending && !revise.isPending) {
       const fingerprint = `${text} ${pendingFiles.map((file) => `${file.name}:${file.size}`).join(",")}`;
       const attemptKey = usedDraftId === null ? "manual" : `draft-${usedDraftId}`;
       reply.mutate({
@@ -233,6 +252,27 @@ export function ThreadView(props: {
     seenDraftIds.current.add(next.id);
     setReplyText(next.text_body);
     setUsedDraftId(next.id);
+    setUndoState(null);
+  };
+
+  const composerBusy = reply.isPending || discard.isPending || revise.isPending;
+
+  const submitInstruction = () => {
+    if (composerBusy) return;
+    revise.mutate({ instruction: instruction.trim(), currentText: replyText, previousDraftId: usedDraftId });
+  };
+
+  const closeInstruction = () => {
+    setInstructionOpen(false);
+    revise.reset();
+    replyRef.current?.focus();
+  };
+
+  const undoRevision = () => {
+    if (!undoState) return;
+    setReplyText(undoState.text);
+    setUsedDraftId(undoState.draftId);
+    setUndoState(null);
   };
 
   const addFiles = (list: FileList | null) => {
@@ -338,26 +378,45 @@ export function ThreadView(props: {
                 status={agentStatus}
                 draft={draft}
                 usingDraft={draft !== null && usedDraftId === draft.id}
-                error={
-                  startDraft.isError && startDraft.error instanceof Error
-                    ? startDraft.error.message
-                    : detail.data.draft_run?.error ?? null
-                }
-                busy={retryDraft.isPending || startDraft.isPending || discard.isPending}
-                disabled={reply.isPending}
+                error={detail.data.draft_run?.error ?? null}
+                busy={retryDraft.isPending || discard.isPending}
+                disabled={reply.isPending || revise.isPending}
+                rewriting={revise.isPending}
+                instructionOpen={instructionOpen}
+                canUndo={undoState !== null && !revise.isPending}
                 onUse={() => draft && applyDraft(draft)}
                 onDiscard={() => draft && discard.mutate(draft.id)}
                 onRetry={() => {
                   if (detail.data.draft_run) retryDraft.mutate(detail.data.draft_run.id);
                 }}
-                onStart={() => startDraft.mutate()}
+                onInstruct={() => {
+                  setInstructionOpen(true);
+                  requestAnimationFrame(() => instructionRef.current?.focus());
+                }}
+                onUndo={undoRevision}
               />
             </div>
+            {instructionOpen && (
+              <InstructionBar
+                inputRef={instructionRef}
+                value={instruction}
+                onChange={setInstruction}
+                hasReply={replyText.trim().length > 0}
+                pending={revise.isPending}
+                disabled={reply.isPending || discard.isPending}
+                error={revise.error instanceof Error ? revise.error.message : null}
+                onSubmit={submitInstruction}
+                onClose={closeInstruction}
+              />
+            )}
             <Textarea
+              ref={replyRef}
               value={replyText}
-              disabled={reply.isPending || discard.isPending}
+              disabled={composerBusy}
+              aria-busy={revise.isPending || undefined}
               onChange={(event) => {
                 setReplyText(event.target.value);
+                setUndoState(null);
                 if (!event.target.value.trim()) setUsedDraftId(null);
               }}
               onKeyDown={(event) => {
@@ -369,7 +428,7 @@ export function ThreadView(props: {
               placeholder="Write a reply…"
               rows={3}
               aria-label="Reply"
-              className="max-h-[min(30dvh,200px)] min-h-[84px] resize-none overflow-y-auto overscroll-contain rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-6 shadow-none focus-visible:ring-0 md:text-sm"
+              className="max-h-[min(30dvh,200px)] min-h-[84px] resize-none overflow-y-auto overscroll-contain rounded-none border-0 bg-transparent px-3.5 py-3 text-sm leading-6 shadow-none transition-opacity duration-300 ease-out focus-visible:ring-0 disabled:bg-transparent aria-busy:opacity-40 md:text-sm"
             />
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-1.5 px-3.5 pb-1" aria-label="Attachments to send">
@@ -426,9 +485,7 @@ export function ThreadView(props: {
                 </Button>
                 <Button
                   onClick={submitReply}
-                  disabled={
-                    (!replyText.trim() && pendingFiles.length === 0) || reply.isPending || discard.isPending
-                  }
+                  disabled={(!replyText.trim() && pendingFiles.length === 0) || composerBusy}
                 >
                   <SendIcon className="h-3.5 w-3.5" />
                   {reply.isPending ? "Sending…" : "Send reply"}
@@ -572,11 +629,24 @@ function DraftAssist(props: {
   error: string | null;
   busy: boolean;
   disabled: boolean;
+  rewriting: boolean;
+  instructionOpen: boolean;
+  canUndo: boolean;
   onUse: () => void;
   onDiscard: () => void;
   onRetry: () => void;
-  onStart: () => void;
+  onInstruct: () => void;
+  onUndo: () => void;
 }) {
+  if (props.rewriting) {
+    return (
+      <span role="status" className="flex shrink-0 items-center gap-1 px-1.5 font-medium text-foreground/80">
+        <SparklesIcon className="h-3 w-3 animate-pulse" />
+        Rewriting…
+      </span>
+    );
+  }
+
   const action = (label: string, onClick: () => void, title?: string) => (
     <Button
       variant="ghost"
@@ -612,7 +682,9 @@ function DraftAssist(props: {
           </>
         )}
         <span aria-hidden="true">·</span>
+        {props.canUndo && action("Undo", props.onUndo, "Restore the reply from before this rewrite")}
         {!props.usingDraft && action("Replace", props.onUse, "Replace reply with AI draft")}
+        {!props.instructionOpen && action("Revise", props.onInstruct, "Tell AI how to change this reply")}
         {action(props.busy ? "Discarding…" : "Discard", props.onDiscard, "Discard AI draft and clear reply")}
       </span>
     );
@@ -638,23 +710,104 @@ function DraftAssist(props: {
     );
   }
 
-  if (props.status === "not_processed") {
+  if ((props.status === "not_processed" || props.status === "processed") && !props.instructionOpen) {
     return (
       <Button
         variant="ghost"
         size="xs"
         className="shrink-0 text-muted-foreground hover:text-foreground"
-        onClick={props.onStart}
+        onClick={props.onInstruct}
         disabled={props.busy || props.disabled}
-        title={props.error ?? undefined}
       >
         <SparklesIcon className="h-3 w-3" />
-        {props.busy ? "Drafting…" : "Draft with AI"}
+        Draft with AI
       </Button>
     );
   }
 
   return null;
+}
+
+function InstructionBar(props: {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  value: string;
+  onChange: (value: string) => void;
+  hasReply: boolean;
+  pending: boolean;
+  disabled: boolean;
+  error: string | null;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  const verb = props.hasReply ? "Rewrite" : "Draft";
+  return (
+    <div className="border-b border-border/70 bg-muted/35">
+      <form
+        className="flex min-h-10 items-center gap-2 py-1 pr-1.5 pl-3.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          props.onSubmit();
+        }}
+      >
+        <SparklesIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <input
+          ref={props.inputRef}
+          value={props.value}
+          onChange={(event) => props.onChange(event.target.value)}
+          onKeyDown={(event) => {
+            // Enter that confirms an IME composition must not submit.
+            if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) {
+              event.preventDefault();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              props.onClose();
+            }
+          }}
+          disabled={props.pending || props.disabled}
+          maxLength={2000}
+          aria-label="Instruction for the AI draft"
+          aria-invalid={props.error ? true : undefined}
+          placeholder={
+            props.hasReply
+              ? "How should AI change this reply? e.g. shorter, firmer on the refund"
+              : "Optional: tell AI what to write, e.g. decline politely"
+          }
+          className="h-8 min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
+        />
+        <Button
+          type="submit"
+          variant="outline"
+          size="xs"
+          className="shrink-0"
+          disabled={props.pending || props.disabled}
+        >
+          {props.pending ? `${verb === "Rewrite" ? "Rewriting" : "Drafting"}…` : verb}
+          {!props.pending && (
+            <span className="hidden sm:contents">
+              <Kbd>↵</Kbd>
+            </span>
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="shrink-0 text-muted-foreground"
+          aria-label="Close AI instruction"
+          title="Close (Esc)"
+          disabled={props.pending}
+          onClick={props.onClose}
+        >
+          <XIcon />
+        </Button>
+      </form>
+      {props.error && (
+        <p role="alert" className="px-3.5 pb-2 text-xs leading-5 text-destructive">
+          {props.error} Your reply is unchanged.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function formatFileSize(bytes: number): string {

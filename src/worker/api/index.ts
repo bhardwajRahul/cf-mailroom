@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { requireSameOrigin } from "./csrf.ts";
 import { composeApi } from "./compose.ts";
+import {
+  DraftRevisionError,
+  MAX_REVISION_INSTRUCTION_CHARS,
+  reviseDraft,
+} from "../agent/draft";
 import { enqueueDraftRun } from "../agent/runs";
 import {
   AttachmentInputError,
@@ -678,6 +683,25 @@ api.post("/threads/:id/draft", async (c) => {
 
   const runId = await enqueueDraftRun(c.env, threadId, latestMessage.id);
   return c.json({ ok: true, run_id: runId }, 202);
+});
+
+api.post("/threads/:id/draft/revise", async (c) => {
+  const threadId = parsePositiveId(c.req.param("id"));
+  if (threadId === null) return c.json({ error: "Invalid conversation" }, 400);
+  const body = await c.req.json<{ instruction?: unknown; current_text?: unknown }>();
+  const instruction = typeof body.instruction === "string" ? body.instruction.trim() : "";
+  const currentText = typeof body.current_text === "string" ? body.current_text : "";
+  if (instruction.length > MAX_REVISION_INSTRUCTION_CHARS) {
+    return c.json({ error: `Keep the instruction under ${MAX_REVISION_INSTRUCTION_CHARS} characters` }, 400);
+  }
+  try {
+    const draft = await reviseDraft(c.env, threadId, { instruction, currentText });
+    return c.json(draft);
+  } catch (error) {
+    if (error instanceof DraftRevisionError) return c.json({ error: error.message }, error.status);
+    console.error("Draft revision failed", error);
+    return c.json({ error: "The AI couldn’t write a new draft. Try again." }, 502);
+  }
 });
 
 api.post("/threads/bulk", async (c) => {

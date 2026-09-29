@@ -36,6 +36,10 @@ _Avoid_: Auto-reply, suggestion
 One retryable attempt to produce an Agent Draft for a specific latest inbound Message. It ends with an Agent Draft, a failure, or an explicit skip; it never ends as an unlabelled absence.
 _Avoid_: Agent job, generation task
 
+**Draft Revision**:
+A reviewer-requested, synchronous rewrite of the reply for the latest inbound Message, steered by a one-off instruction and the current composer text. It replaces the pending Agent Draft, records the instruction in the draft's notes, and does not create or change a Draft Run.
+_Avoid_: Regenerate, redraft
+
 **Unprocessed Message**:
 An inbound Message for which no Draft Run exists. It is distinct from a skipped Draft Run because the agent never considered it.
 _Avoid_: Empty result, no draft
