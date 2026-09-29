@@ -37,7 +37,7 @@ One retryable attempt to produce an Agent Draft for a specific latest inbound Me
 _Avoid_: Agent job, generation task
 
 **Draft Revision**:
-A reviewer-requested, synchronous rewrite of the reply for the latest inbound Message, steered by a one-off instruction and the current composer text. It replaces the pending Agent Draft, records the instruction in the draft's notes, and does not create or change a Draft Run.
+A reviewer-requested, synchronous rewrite of the reply for the latest inbound Message, steered by a one-off instruction and the current composer text. It replaces the pending Agent Draft, records the instruction in the draft's notes, and does not create or change a Draft Run. Because a person explicitly asked for it, it is available in any Conversation with an inbound Message, whatever the Inbox agent mode, and writes a follow-up when the Conversation ends with our reply.
 _Avoid_: Regenerate, redraft
 
 **Unprocessed Message**:

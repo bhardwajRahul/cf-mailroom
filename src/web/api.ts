@@ -252,9 +252,6 @@ export const sendReply = (
 
 export const discardDraft = (id: number) => request(`/drafts/${id}/discard`, { method: "POST" });
 
-export const retryDraftRun = (id: number) =>
-  request<{ ok: true }>(`/draft-runs/${id}/retry`, { method: "POST" });
-
 export const reviseDraft = (threadId: number, instruction: string, currentText: string) =>
   request<Draft>(`/threads/${threadId}/draft/revise`, {
     method: "POST",

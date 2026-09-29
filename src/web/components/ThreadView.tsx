@@ -5,7 +5,6 @@ import {
   discardDraft,
   fetchThread,
   markRead,
-  retryDraftRun,
   reviseDraft,
   sendReply,
   unarchiveThread,
@@ -165,11 +164,6 @@ export function ThreadView(props: {
       invalidateAll();
       props.onMoved();
     },
-  });
-
-  const retryDraft = useMutation({
-    mutationFn: (runId: number) => retryDraftRun(runId),
-    onSuccess: invalidateAll,
   });
 
   const draft = detail.data?.drafts.at(-1) ?? null;
@@ -378,17 +372,14 @@ export function ThreadView(props: {
                 status={agentStatus}
                 draft={draft}
                 usingDraft={draft !== null && usedDraftId === draft.id}
+                canDraft={messages.some((message) => message.direction === "inbound")}
                 error={detail.data.draft_run?.error ?? null}
-                busy={retryDraft.isPending || discard.isPending}
+                busy={discard.isPending}
                 disabled={reply.isPending || revise.isPending}
-                rewriting={revise.isPending}
                 instructionOpen={instructionOpen}
                 canUndo={undoState !== null && !revise.isPending}
                 onUse={() => draft && applyDraft(draft)}
                 onDiscard={() => draft && discard.mutate(draft.id)}
-                onRetry={() => {
-                  if (detail.data.draft_run) retryDraft.mutate(detail.data.draft_run.id);
-                }}
                 onInstruct={() => {
                   setInstructionOpen(true);
                   requestAnimationFrame(() => instructionRef.current?.focus());
@@ -626,39 +617,38 @@ function DraftAssist(props: {
   status: AgentDraftStatus;
   draft: Draft | null;
   usingDraft: boolean;
+  canDraft: boolean;
   error: string | null;
   busy: boolean;
   disabled: boolean;
-  rewriting: boolean;
   instructionOpen: boolean;
   canUndo: boolean;
   onUse: () => void;
   onDiscard: () => void;
-  onRetry: () => void;
   onInstruct: () => void;
   onUndo: () => void;
 }) {
-  if (props.rewriting) {
-    return (
-      <span role="status" className="flex shrink-0 items-center gap-1 px-1.5 font-medium text-foreground/80">
-        <SparklesIcon className="h-3 w-3 animate-pulse" />
-        Rewriting…
-      </span>
-    );
-  }
-
-  const action = (label: string, onClick: () => void, title?: string) => (
+  const action = (
+    label: string,
+    onClick: () => void,
+    title: string,
+    icon?: React.ReactNode,
+  ) => (
     <Button
-      variant="ghost"
+      variant="outline"
       size="xs"
-      className="text-muted-foreground hover:text-foreground"
+      className="text-foreground/80"
       onClick={onClick}
       disabled={props.busy || props.disabled}
       title={title}
     >
+      {icon}
       {label}
     </Button>
   );
+  const reviseAction = (label: string, title: string) =>
+    !props.instructionOpen &&
+    action(label, props.onInstruct, title, <SparklesIcon className="text-muted-foreground" />);
 
   if (props.draft) {
     const context = [
@@ -668,64 +658,45 @@ function DraftAssist(props: {
       .filter(Boolean)
       .join("\n\n");
     return (
-      <span className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1 gap-y-0.5" title={context || undefined}>
-        <span role="status" className="flex shrink-0 items-center gap-1 font-medium text-foreground/80">
-          <SparklesIcon className="h-3 w-3" />
-          {props.usingDraft ? "AI draft" : "New AI draft"}
+      <span className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span role="status" className="flex min-w-0 items-center gap-1.5" title={context || undefined}>
+          <SparklesIcon className="h-3 w-3 shrink-0 text-foreground/70" />
+          <span className="shrink-0 font-medium text-foreground/80">
+            {props.usingDraft ? "AI draft" : "New AI draft"}
+          </span>
+          {props.usingDraft && props.draft.playbook_name && (
+            <span className="min-w-0 truncate">· {props.draft.playbook_name}</span>
+          )}
         </span>
-        {props.usingDraft && props.draft.playbook_name && (
-          <>
-            <span aria-hidden="true">·</span>
-            <span className="min-w-0 truncate" title={`Playbook: ${props.draft.playbook_name}`}>
-              Playbook: {props.draft.playbook_name}
-            </span>
-          </>
-        )}
-        <span aria-hidden="true">·</span>
-        {props.canUndo && action("Undo", props.onUndo, "Restore the reply from before this rewrite")}
-        {!props.usingDraft && action("Replace", props.onUse, "Replace reply with AI draft")}
-        {!props.instructionOpen && action("Revise", props.onInstruct, "Tell AI how to change this reply")}
-        {action(props.busy ? "Discarding…" : "Discard", props.onDiscard, "Discard AI draft and clear reply")}
+        <span className="flex shrink-0 items-center gap-1">
+          {props.canUndo && action("Undo", props.onUndo, "Restore the reply from before this rewrite")}
+          {!props.usingDraft && action("Replace", props.onUse, "Replace reply with AI draft")}
+          {reviseAction("Revise", "Tell AI how to change this reply")}
+          {action(props.busy ? "Discarding…" : "Discard", props.onDiscard, "Discard AI draft and clear reply")}
+        </span>
       </span>
     );
   }
 
   if (props.status === "processing") {
     return (
-      <span className="flex shrink-0 items-center gap-1 px-1.5">
+      <span role="status" className="flex shrink-0 items-center gap-1.5 px-1.5">
         <SparklesIcon className="h-3 w-3 animate-pulse" />
         Drafting…
       </span>
     );
   }
 
-  if (props.status === "failed") {
-    return (
-      <span className="flex shrink-0 items-center gap-0.5">
-        <span className="px-1.5" title={props.error ?? undefined}>
-          AI draft unavailable
-        </span>
-        {action(props.busy ? "Retrying…" : "Retry", props.onRetry)}
-      </span>
-    );
-  }
+  if (!props.canDraft) return null;
 
-  if ((props.status === "not_processed" || props.status === "processed") && !props.instructionOpen) {
-    return (
-      <Button
-        variant="ghost"
-        size="xs"
-        className="shrink-0 text-muted-foreground hover:text-foreground"
-        onClick={props.onInstruct}
-        disabled={props.busy || props.disabled}
-      >
-        <SparklesIcon className="h-3 w-3" />
-        Draft with AI
-      </Button>
-    );
-  }
-
-  return null;
+  return (
+    <span className="flex shrink-0 items-center gap-2.5">
+      {props.status === "failed" && (
+        <span title={props.error ?? undefined}>Automatic draft failed</span>
+      )}
+      {reviseAction("Draft with AI", "Ask AI to draft a reply, optionally with an instruction")}
+    </span>
+  );
 }
 
 function InstructionBar(props: {
@@ -781,6 +752,7 @@ function InstructionBar(props: {
           className="shrink-0"
           disabled={props.pending || props.disabled}
         >
+          {props.pending && <SparklesIcon className="animate-pulse" />}
           {props.pending ? `${verb === "Rewrite" ? "Rewriting" : "Drafting"}…` : verb}
           {!props.pending && (
             <span className="hidden sm:contents">

@@ -51,6 +51,15 @@ test("an empty revision still asks for a fresh version", () => {
   assert.match(system, /No specific instruction; write a fresh, better version/);
 });
 
+test("a conversation that ends with our reply asks for a follow-up", () => {
+  const { system } = buildDraftPrompt(context, { ...inputs, followUp: true }, {
+    instruction: "Nudge them",
+    currentText: "",
+  });
+  assert.match(system, /ends with our own reply\. Write a follow-up/);
+  assert.doesNotMatch(system, /Write a reply to the latest message/);
+});
+
 test("parses the playbook header out of model output", () => {
   const playbook = { id: 3, name: "Refunds", when_to_use: "", instructions: "", example_reply: null };
   assert.deepEqual(parseDraftOutput("PLAYBOOK: 3\nREPLY:\nHello", [playbook]), {
