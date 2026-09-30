@@ -75,11 +75,12 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
-export function MailIcon(props: IconProps) {
+export function MailUnreadIcon(props: IconProps) {
   return (
     <svg {...baseProps} {...props}>
-      <rect x="3" y="5" width="18" height="14" rx="2.5" />
-      <path d="m4 7 8 6 8-6" />
+      <path d="M14 5H5.5A2.5 2.5 0 0 0 3 7.5v9A2.5 2.5 0 0 0 5.5 19h13a2.5 2.5 0 0 0 2.5-2.5V11" />
+      <path d="m4 7 8 6 4-3" />
+      <circle cx="20" cy="4" r="3" fill="currentColor" stroke="none" />
     </svg>
   );
 }

@@ -26,7 +26,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   InboxIcon,
-  MailIcon,
+  MailUnreadIcon,
   PaperclipIcon,
   SendIcon,
   SparklesIcon,
@@ -345,7 +345,7 @@ export function ThreadView(props: {
           onClick={() => markUnread.mutate()}
           className="shrink-0"
         >
-          <MailIcon className="h-4 w-4" />
+          <MailUnreadIcon className="h-4 w-4" />
         </Button>
         {thread.status === "archived" ? (
           <Button
