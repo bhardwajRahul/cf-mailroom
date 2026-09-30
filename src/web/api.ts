@@ -223,16 +223,30 @@ export const searchThreads = (q: string, query: Omit<ThreadQuery, "status">) => 
   return request<ThreadSummary[]>(`/search?${params}`);
 };
 
-export type BulkThreadAction = "read" | "archive" | "unarchive";
+export type BulkThreadAction = "read" | "unread" | "archive" | "unarchive";
 
-export const bulkUpdateThreads = (ids: number[], action: BulkThreadAction) =>
-  request<{ ok: true; updated: number }>("/threads/bulk", {
+const pendingReadRequests = new Map<number, Promise<unknown>>();
+
+export const bulkUpdateThreads = async (ids: number[], action: BulkThreadAction) => {
+  // Finish automatic reads first so a late response cannot undo an explicit unread action.
+  if (action === "unread") {
+    await Promise.allSettled(ids.map((id) => pendingReadRequests.get(id)));
+  }
+  return request<{ ok: true; updated: number }>("/threads/bulk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids, action }),
   });
+};
 
-export const markRead = (id: number) => request(`/threads/${id}/read`, { method: "POST" });
+export const markRead = (id: number) => {
+  const pending = pendingReadRequests.get(id);
+  if (pending) return pending;
+  const result = request(`/threads/${id}/read`, { method: "POST" })
+    .finally(() => pendingReadRequests.delete(id));
+  pendingReadRequests.set(id, result);
+  return result;
+};
 
 export const archiveThread = (id: number) => request(`/threads/${id}/archive`, { method: "POST" });
 

@@ -317,6 +317,11 @@ function Workspace(props: {
             onSelect={(id) =>
               navigate({ pathname: `${threadListBase(listPath)}/${id}`, search: location.search })
             }
+            onMarkedUnread={(ids) => {
+              if (selectedThread !== null && ids.includes(selectedThread)) {
+                navigate({ pathname: listPath, search: location.search });
+              }
+            }}
           />
           <main
             className={`min-w-0 flex-1 overflow-hidden ${selectedThread === null ? "hidden md:block" : "block"}`}

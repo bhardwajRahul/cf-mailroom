@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   archiveThread,
+  bulkUpdateThreads,
   discardDraft,
   fetchThread,
   markRead,
@@ -25,6 +26,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   InboxIcon,
+  MailIcon,
   PaperclipIcon,
   SendIcon,
   SparklesIcon,
@@ -71,6 +73,9 @@ export function ThreadView(props: {
     markRead(props.threadId).then(() => {
       queryClient.invalidateQueries({ queryKey: ["threads"] });
       queryClient.invalidateQueries({ queryKey: ["mailboxes"] });
+    }).catch(() => {
+      // Allow the next interaction to retry an unsuccessful automatic read.
+      markedRead.current = null;
     });
   }, [props.threadId, queryClient]);
 
@@ -163,6 +168,14 @@ export function ThreadView(props: {
     onSuccess: () => {
       invalidateAll();
       props.onMoved();
+    },
+  });
+
+  const markUnread = useMutation({
+    mutationFn: () => bulkUpdateThreads([props.threadId], "unread"),
+    onSuccess: () => {
+      invalidateAll();
+      props.onBack();
     },
   });
 
@@ -321,11 +334,24 @@ export function ThreadView(props: {
             )}
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="icon"
+          title="Mark unread"
+          aria-label="Mark conversation as unread"
+          disabled={markUnread.isPending || moveThread.isPending}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          onClick={() => markUnread.mutate()}
+          className="shrink-0"
+        >
+          <MailIcon className="h-4 w-4" />
+        </Button>
         {thread.status === "archived" ? (
           <Button
             variant="outline"
             onClick={() => moveThread.mutate("unarchive")}
-            disabled={moveThread.isPending}
+            disabled={moveThread.isPending || markUnread.isPending}
             aria-label="Move conversation to inbox"
             className="shrink-0"
           >
@@ -338,7 +364,7 @@ export function ThreadView(props: {
           <Button
             variant="outline"
             onClick={() => moveThread.mutate("archive")}
-            disabled={moveThread.isPending}
+            disabled={moveThread.isPending || markUnread.isPending}
             aria-label="Archive conversation"
             className="shrink-0"
           >
@@ -349,6 +375,12 @@ export function ThreadView(props: {
           </Button>
         )}
       </header>
+
+      {markUnread.isError && (
+        <p role="alert" className="border-b bg-background px-4 py-2 text-sm text-destructive md:px-6">
+          Couldn’t mark this conversation as unread. Please try again.
+        </p>
+      )}
 
       <div ref={conversationRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mr-auto w-full max-w-[800px] space-y-3 px-4 py-5 sm:px-6 md:py-6">

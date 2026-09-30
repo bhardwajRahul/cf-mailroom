@@ -733,11 +733,14 @@ api.post("/threads/bulk", async (c) => {
   }
   const updates: Record<string, string> = {
     read: "is_read = 1",
+    unread: "is_read = 0",
     archive: "status = 'archived'",
     unarchive: "status = CASE status WHEN 'archived' THEN 'open' ELSE status END",
   };
-  const update = typeof body.action === "string" ? updates[body.action] : undefined;
-  if (!update) return c.json({ error: "action must be read, archive or unarchive" }, 400);
+  const update = typeof body.action === "string" && Object.hasOwn(updates, body.action)
+    ? updates[body.action]
+    : undefined;
+  if (!update) return c.json({ error: "action must be read, unread, archive or unarchive" }, 400);
 
   const placeholders = ids.map(() => "?").join(", ");
   const result = await c.env.DB.prepare(

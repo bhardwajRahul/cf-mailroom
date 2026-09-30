@@ -60,6 +60,7 @@ export function ThreadList(props: {
   onCompose: () => void;
   onOpenMailboxSettings: (id: number) => void;
   onSelect: (id: number) => void;
+  onMarkedUnread: (ids: number[]) => void;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -114,10 +115,12 @@ export function ThreadList(props: {
   const bulkUpdate = useMutation({
     mutationFn: ({ ids, action }: { ids: number[]; action: BulkThreadAction }) =>
       bulkUpdateThreads(ids, action),
-    onSuccess: () => {
+    onSuccess: (_result, { ids, action }) => {
       setChecked(new Set());
+      if (action === "unread") props.onMarkedUnread(ids);
       queryClient.invalidateQueries({ queryKey: ["threads"] });
       queryClient.invalidateQueries({ queryKey: ["mailboxes"] });
+      for (const id of ids) queryClient.invalidateQueries({ queryKey: ["thread", id] });
     },
   });
 
@@ -132,6 +135,8 @@ export function ThreadList(props: {
 
   const checkedCount = checked.size;
   const allChecked = visibleThreads.length > 0 && checkedCount === visibleThreads.length;
+  const checkedAllRead = checkedCount > 0 &&
+    visibleThreads.every((thread) => !checked.has(thread.id) || Boolean(thread.is_read));
 
   const checkedAllArchived =
     checkedCount > 0 &&
@@ -269,9 +274,11 @@ export function ThreadList(props: {
                       variant="ghost"
                       size="sm"
                       disabled={bulkUpdate.isPending}
-                      onClick={() => bulkUpdate.mutate({ ids: [...checked], action: "read" })}
+                      onClick={() => bulkUpdate.mutate({
+                        ids: [...checked], action: checkedAllRead ? "unread" : "read",
+                      })}
                     >
-                      Mark read
+                      {checkedAllRead ? "Mark unread" : "Mark read"}
                     </Button>
                     <Button
                       variant="ghost"
@@ -357,6 +364,11 @@ export function ThreadList(props: {
               )}
             </div>
           </>
+        )}
+        {bulkUpdate.isError && (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            Couldn’t update the selected conversations. Please try again.
+          </p>
         )}
       </header>
 
