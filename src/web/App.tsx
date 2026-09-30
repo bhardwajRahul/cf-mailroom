@@ -26,6 +26,7 @@ import { InboxIcon } from "./components/Icons";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadList, type ThreadFilter, type ThreadScope } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
+import { useUnreadIndicator } from "./use-unread-indicator";
 
 type WorkspaceView = "inbox" | "archive" | "settings";
 type SettingsSection = "general" | "inboxes";
@@ -94,7 +95,13 @@ function Workspace(props: {
     queryKey: ["mailboxes"],
     queryFn: fetchMailboxes,
     retry: (failureCount, error) => !accessSetupError(error) && failureCount < 3,
+    refetchIntervalInBackground: true,
   });
+  useUnreadIndicator(
+    accessSetupError(mailboxes.error)
+      ? 0
+      : mailboxes.data?.reduce((sum, mailbox) => sum + mailbox.unread_count, 0),
+  );
   const labels = useQuery({ queryKey: ["labels"], queryFn: () => fetchLabels() });
   const threadQuery = {
     mailboxId: selectedMailbox,
